@@ -68,6 +68,7 @@ const (
 
 type refreshToken func (*Client) error
 var refreshTok refreshToken
+var dbg Debug
 
 func init() {
     log.SetFlags(log.LstdFlags | log.Lshortfile)
@@ -172,7 +173,7 @@ func (client *Client) authorize() (*Authorization, error) {
     resp, err := http.Post(authURL.string(), "application/json", *(new(io.Reader)))
 
     if err != nil {
-        log.Printf("Error when posting: %s", err)
+        dbg.Printf("Error when posting: %s", err)
         return nil, err
     }
 
@@ -185,7 +186,7 @@ func (client *Client) authorize() (*Authorization, error) {
 
     authorization := new(Authorization)
     if err := json.Unmarshal(body, authorization); err != nil {
-        log.Printf("Error while receiving the authorization %s %s", err.Error(), body)
+        dbg.Printf("Error while receiving the authorization %s %s", err.Error(), body)
         return nil, err
     }
 
@@ -200,14 +201,14 @@ func (client *Client) Get(resourcePath string) (*http.Response, error) {
     apiUrl, err := client.getAuthorizedURL(resourcePath)
 
     if err != nil {
-        log.Printf("Error while refreshing token")
+        dbg.Printf("Error while refreshing token")
         return nil, err
     }
 
     resp, err := http.Get(apiUrl.string())
 
     if err != nil {
-        fmt.Printf("Error while calling url: %s \n Error: %s", apiUrl.string(), err)
+        dbg.Printf("Error while calling url: %s \n Error: %s", apiUrl.string(), err)
         return nil, err
     }
 
@@ -219,14 +220,14 @@ func (client *Client) Post(resourcePath string, body string) (*http.Response, er
     apiUrl, err := client.getAuthorizedURL(resourcePath)
 
     if err != nil {
-        log.Printf("Error while refreshing token")
+        dbg.Printf("Error while refreshing token")
         return nil, err
     }
 
     resp, err := http.Post(apiUrl.string(), "application/json", bytes.NewReader([]byte(body)))
 
     if err != nil {
-        fmt.Printf("Error while calling url: %s \n Error: %s", apiUrl.string(), err)
+        dbg.Printf("Error while calling url: %s \n Error: %s", apiUrl.string(), err)
         return nil, err
     }
 
@@ -238,14 +239,14 @@ func (client *Client) Put(resourcePath string, body *string) (*http.Response, er
     apiUrl, err := client.getAuthorizedURL(resourcePath)
 
     if err != nil {
-        log.Printf("Error while refreshing token")
+        dbg.Printf("Error while refreshing token")
         return nil, err
     }
 
     req, err := http.NewRequest(http.MethodPut, apiUrl.string(), strings.NewReader(*body))
 
     if err != nil {
-        log.Printf("Error when creating PUT request %d.", err)
+        dbg.Printf("Error when creating PUT request %d.", err)
         return nil, err
     }
 
@@ -253,7 +254,7 @@ func (client *Client) Put(resourcePath string, body *string) (*http.Response, er
     resp, err := http.DefaultClient.Do(req)
 
     if err != nil {
-        fmt.Printf("Error while calling url: %s\n Error: %s", apiUrl.string(), err)
+        dbg.Printf("Error while calling url: %s\n Error: %s", apiUrl.string(), err)
         return nil, err
     }
 
@@ -265,21 +266,21 @@ func (client *Client) Delete(resourcePath string ) (*http.Response, error) {
     apiUrl, err := client.getAuthorizedURL(resourcePath)
 
     if err != nil {
-        log.Printf("Error while refreshing token")
+        dbg.Printf("Error while refreshing token")
         return nil, err
     }
 
     req, err := http.NewRequest(http.MethodDelete, apiUrl.string(), nil)
 
     if err != nil {
-        log.Printf("Error when creating Delete request %d.", err)
+        dbg.Printf("Error when creating Delete request %d.", err)
         return nil, err
     }
 
     resp, err := http.DefaultClient.Do(req)
 
     if err != nil {
-        fmt.Printf("Error while calling url: %s \n Error: %s", apiUrl.string(), err)
+        dbg.Printf("Error while calling url: %s \n Error: %s", apiUrl.string(), err)
         return nil, err
     }
 
@@ -298,7 +299,7 @@ func hookRefreshToken(client *Client) error {
     resp, err := http.Post(authorizationURL.string(), "application/json", *(new(io.Reader)))
 
     if err != nil {
-        log.Printf("Error while refreshing token: %s\n", err.Error())
+        dbg.Printf("Error while refreshing token: %s\n", err.Error())
         return err
     }
 
@@ -310,13 +311,13 @@ func hookRefreshToken(client *Client) error {
     resp.Body.Close()
 
     if err := json.Unmarshal(body, &(client.auth)); err != nil {
-        log.Printf("Error while receiving the authorization %s %s", err.Error(), body)
+        dbg.Printf("Error while receiving the authorization %s %s", err.Error(), body)
         return err
     }
 
     client.auth.ReceivedAt = time.Now().Unix()
 
-    log.Printf("auth received at: %d expires in:%d\n", client.auth.ReceivedAt, client.auth.ExpiresIn)
+    dbg.Printf("auth received at: %d expires in:%d\n", client.auth.ReceivedAt, client.auth.ExpiresIn)
     return nil
 }
 /*
@@ -333,11 +334,11 @@ func (client *Client) getAuthorizedURL(resourcePath string) (*AuthorizationURL, 
         authMutex.Lock()
 
        if client.auth.isExpired() {
-            log.Printf("token has expired....refreshing...\n")
+            dbg.Printf("token has expired....refreshing...\n")
             err := refreshTok(client)
 
             if err != nil {
-                log.Printf("Error while refreshing token %s\n", err.Error())
+                dbg.Printf("Error while refreshing token %s\n", err.Error())
                 return nil, err
             }
        }
@@ -359,8 +360,17 @@ type Authorization struct {
 }
 
 func (auth Authorization) isExpired() bool {
-    log.Printf("received at:%d expires in: %d\n", auth.ReceivedAt, auth.ExpiresIn)
+    dbg.Printf("received at:%d expires in: %d\n", auth.ReceivedAt, auth.ExpiresIn)
     return ((auth.ReceivedAt + int64(auth.ExpiresIn)) <= (time.Now().Unix() + 60))
+}
+
+
+type Debug bool
+
+func (d Debug) Printf(s string, a ...interface{}) {
+    if d {
+        fmt.Printf(s, a...)
+    }
 }
 
 /*

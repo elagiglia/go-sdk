@@ -73,8 +73,6 @@ func Test_GET_public_API_sites_works_properly ( t *testing.T){
     if err != nil || string(body) == ""{
         t.FailNow()
     }
-
-    fmt.Printf("body %s", body)
 }
 
 func Test_GET_private_API_users_works_properly (t *testing.T){
