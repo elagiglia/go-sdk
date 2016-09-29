@@ -26,6 +26,8 @@ import (
     "net/http"
     "sync"
     "strings"
+    "bytes"
+    "errors"
 )
 
 const (
@@ -38,6 +40,7 @@ var clientByUser map[string] *sdk.Client
 var clientByUserMutex sync.Mutex
 
 func main() {
+
 
     clientByUser = make(map[string] *sdk.Client)
 
@@ -153,8 +156,14 @@ func getRouter() *mux.Router{
         Route{
             "get_item",
             "GET",
-            "/items/{itemId}",
+            "/{userId}/items/{itemId}",
             getItem,
+        },
+        Route{
+            "sites",
+            "GET",
+            "/{userId}/sites",
+            getSites,
         },
         Route{
             "index",
@@ -205,23 +214,52 @@ func getRouter() *mux.Router{
     return router
 }
 
-const USER_ID = "user_id"
+const USER_ID = "userId"
+const ITEM_ID = "itemId"
 
 func getItem(w http.ResponseWriter, r *http.Request) {
 
-    user := r.Header.Get(USER_ID)
 
-    if strings.Compare(user, "") == 0 {
-        log.Printf("userid is missing")
+    user, err := getParam(r, USER_ID)
+
+    if err != nil {
+        log.Printf("%s", err)
         return
     }
 
-    pathParams := mux.Vars(r)
-    productId := pathParams["itemId"]
+    productId, err := getParam(r, ITEM_ID)
 
-    client := getClient(user)
+    if err != nil {
+        log.Printf("%s", err)
+        return
+    }
 
-    response, err := client.Get("/items/" + productId)
+    client := getClient(*user)
+
+    response, err := client.Get("/items/" + *productId)
+
+    if err != nil {
+        log.Printf("Error: ", err)
+        return
+    }
+
+    body, _ := ioutil.ReadAll(response.Body)
+
+    fmt.Fprintf(w, "%s", body)
+}
+
+func getSites(w http.ResponseWriter, r *http.Request) {
+
+    user, err := getParam(r, USER_ID)
+
+    if err != nil {
+        log.Printf("%s", err)
+        return
+    }
+
+    client := getClient(*user)
+
+    response, err := client.Get("/sites")
 
     if err != nil {
         log.Printf("Error: ", err)
@@ -251,9 +289,23 @@ func getClient(user string) *sdk.Client{
 }
 
 
+func getParam(r *http.Request, param string) (*string, error) {
+
+    pathParams := mux.Vars(r)
+    value :=  pathParams[param]
+
+    if strings.Compare(value, "") == 0 {
+        return nil, errors.New(fmt.Sprintf("%s is missing", param))
+    }
+
+    return &value, nil
+}
+
 func returnLinks(w http.ResponseWriter, r *http.Request) {
     /*host, _ := os.Hostname()
     addrs, _ := net.LookupIP(host)*/
-    links := "<a href=\"http://localhost:8080/items/MLA12323123\">items/MLA12323123</a>"
-    fmt.Fprintf(w, "%s", links)
+    var links bytes.Buffer
+    links.WriteString("<a href=\"http://localhost:8080/123/items/MLU439286635\">http://localhost:8080/123/items/MLU439286635</a><br>")
+    links.WriteString("<a href=\"http://localhost:8080/123/sites\">http://localhost:8080/123/sites</a><br>")
+    fmt.Fprintf(w, "%s", links.String())
 }
