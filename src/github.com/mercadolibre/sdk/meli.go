@@ -104,6 +104,11 @@ func GetAuthURL(clientId int64, base_site, callback string) string {
     return authURL.string()
 }
 
+func GetClient(clientId int64, code string, secret string, redirectUrl string) (*Client, error){
+    client := &Client{id:clientId, code:code, secret:secret, redirectUrl:redirectUrl, apiUrl:API_URL}
+    return client, nil
+}
+
 /*
 client id, code and secret are generated when creating your application
 */

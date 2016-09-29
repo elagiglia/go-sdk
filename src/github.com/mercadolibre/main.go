@@ -18,10 +18,14 @@ package main
 
 import (
     "github.com/mercadolibre/sdk"
+    "github.com/gorilla/mux"
     "fmt"
     "log"
     "encoding/json"
     "io/ioutil"
+    "net/http"
+    "sync"
+    "strings"
 )
 
 const (
@@ -30,7 +34,14 @@ const (
     CLIENT_SECRET = "qM66avGpv5rcQxNWF4sno5oH7Cjph0I7"
 )
 
+var clientByUser map[string] *sdk.Client
+var clientByUserMutex sync.Mutex
+
 func main() {
+
+    clientByUser = make(map[string] *sdk.Client)
+
+    log.Fatal(http.ListenAndServe(":8080", getRouter()))
 
     /*Example 1)
       Getting the URL to call for authenticating purposes
@@ -38,7 +49,7 @@ func main() {
       entering your credentials you will obtained a CODE which will be used to get all the authorization tokens.
     */
 
-    url := sdk.GetAuthURL(CLIENT_ID, sdk.MLA, "https://www.example.com")
+    url := sdk.GetAuthURL(CLIENT_ID, sdk.MLA, "http://localhost:8080")
     fmt.Printf("Example 1) \n\t Returning Authentication URL:%s\n", url)
 
     /*
@@ -97,7 +108,7 @@ func main() {
     if err != nil {
         log.Printf("Error %s\n", err.Error())
     }
-    userInfo, _= ioutil.ReadAll(resp.Body)
+    userInfo, _ = ioutil.ReadAll(resp.Body)
     resp.Body.Close()
 
     fmt.Printf("Example 4) \n\t Response of PUT /items : %s\n", userInfo)
@@ -120,4 +131,117 @@ func main() {
 
 type item struct {
     Id string
+}
+
+
+
+type Route struct {
+    Name        string
+    Method      string
+    Pattern     string
+    HandlerFunc http.HandlerFunc
+}
+
+type Routes []Route
+
+
+
+func getRouter() *mux.Router{
+
+    routes := Routes{
+
+        Route{
+            "get_item",
+            "GET",
+            "/items/{itemId}",
+            getItem,
+        },/*
+        Route{
+            "getMyConfig",
+            "GET",
+            "/users/{id}/myconfig",
+            service.handleGetPurchaseById,
+        },
+        Route{
+            "post_purchases",
+            "POST",
+            "/users/{userid}/purchases",
+            service.handlePostPurchases,
+        },
+        Route{
+            "delete_purchase",
+            "DELETE",
+            "/users/{userid}/purchases/{id}",
+            service.handleDeletePurchase,
+        },
+        Route{
+            "get_items_description",
+            "GET",
+            "/users/{userid}/items",
+            service.handleGetItemsDescription,
+        },*/
+    }
+    router := mux.NewRouter();
+
+    for _, route := range routes {
+        var handler http.Handler
+
+        handler = route.HandlerFunc
+
+        router.
+        Methods(route.Method).
+        Path(route.Pattern).
+        Name(route.Name).
+        Handler(handler)
+
+    }
+
+    return router
+}
+
+const USER_ID = "user_id"
+
+func getItem(w http.ResponseWriter, r *http.Request) {
+
+    user := r.Header.Get(USER_ID)
+
+    if strings.Compare(user, "") == 0 {
+        log.Printf("userid is missing")
+        return
+    }
+
+    pathParams := mux.Vars(r)
+    productId := pathParams["itemId"]
+
+    client := getClient(user)
+
+    response, err := client.Get("/items/" + productId)
+
+    if err != nil {
+        log.Printf("Error: ", err)
+        return
+    }
+
+    body, _ := ioutil.ReadAll(response.Body)
+
+    fmt.Fprintf(w, "%s", body)
+}
+
+
+func getClient(user string) *sdk.Client{
+
+    clientByUserMutex.Lock()
+    defer clientByUserMutex.Unlock()
+
+    client := clientByUser[user]
+
+    if client == nil {
+
+        client, _ = sdk.NewAnonymousClient()
+        clientByUser[user] = client
+    }
+
+    return client
+
+
 }
