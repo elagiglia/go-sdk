@@ -290,12 +290,18 @@ func me(w http.ResponseWriter, r *http.Request) {
 
     response, err := client.Get("/users/me")
 
+
     if err != nil {
         log.Printf("Error: ", err)
         return
     }
 
     body, _ := ioutil.ReadAll(response.Body)
+
+    if response.StatusCode == http.StatusForbidden {
+        url := sdk.GetAuthURL(CLIENT_ID, "MLA", "http://localhost:8080/123/users/me")
+        body = []byte(url)
+    }
 
     fmt.Fprintf(w, "%s", body)
 }
