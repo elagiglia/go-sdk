@@ -155,6 +155,12 @@ func getRouter() *mux.Router{
             "GET",
             "/items/{itemId}",
             getItem,
+        },
+        Route{
+            "index",
+            "GET",
+            "/",
+            returnLinks,
         },/*
         Route{
             "getMyConfig",
@@ -242,6 +248,12 @@ func getClient(user string) *sdk.Client{
     }
 
     return client
+}
 
 
+func returnLinks(w http.ResponseWriter, r *http.Request) {
+    /*host, _ := os.Hostname()
+    addrs, _ := net.LookupIP(host)*/
+    links := "<a href=\"http://localhost:8080/items/MLA12323123\">items/MLA12323123</a>"
+    fmt.Fprintf(w, "%s", links)
 }
