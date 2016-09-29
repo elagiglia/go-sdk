@@ -154,7 +154,7 @@ func getRouter() *mux.Router{
     routes := Routes{
 
         Route{
-            "get_item",
+            "item",
             "GET",
             "/{userId}/items/{itemId}",
             getItem,
@@ -164,6 +164,12 @@ func getRouter() *mux.Router{
             "GET",
             "/{userId}/sites",
             getSites,
+        },
+        Route{
+            "me",
+            "GET",
+            "/{userId}/users/me",
+            me,
         },
         Route{
             "index",
@@ -271,6 +277,28 @@ func getSites(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintf(w, "%s", body)
 }
 
+func me(w http.ResponseWriter, r *http.Request) {
+
+    user, err := getParam(r, USER_ID)
+
+    if err != nil {
+        log.Printf("%s", err)
+        return
+    }
+
+    client := getClient(*user)
+
+    response, err := client.Get("/users/me")
+
+    if err != nil {
+        log.Printf("Error: ", err)
+        return
+    }
+
+    body, _ := ioutil.ReadAll(response.Body)
+
+    fmt.Fprintf(w, "%s", body)
+}
 
 func getClient(user string) *sdk.Client{
 
@@ -302,10 +330,13 @@ func getParam(r *http.Request, param string) (*string, error) {
 }
 
 func returnLinks(w http.ResponseWriter, r *http.Request) {
-    /*host, _ := os.Hostname()
-    addrs, _ := net.LookupIP(host)*/
+    href := "href=\"http://localhost:8080/123/"
+
     var links bytes.Buffer
-    links.WriteString("<a href=\"http://localhost:8080/123/items/MLU439286635\">http://localhost:8080/123/items/MLU439286635</a><br>")
-    links.WriteString("<a href=\"http://localhost:8080/123/sites\">http://localhost:8080/123/sites</a><br>")
+    links.WriteString("<a " + href + "/items/MLU439286635\">http://localhost:8080/items/MLU439286635</a><br>")
+    links.WriteString("<a " + href + "/sites\">http://localhost:8080/sites</a><br>")
+    links.WriteString("<a " + href + "/users/me\">http://localhost:8080/users/me</a><br>")
+
+
     fmt.Fprintf(w, "%s", links.String())
 }
