@@ -61,7 +61,7 @@ func main() {
     Calling a private API example.
 
 */
-    client, err := sdk.NewClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com")
+    client, err := sdk.GetPrivateApiClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com")
 
     if err != nil {
         log.Printf("Error: %s", err.Error())
@@ -273,6 +273,7 @@ func getSites(w http.ResponseWriter, r *http.Request) {
 
     response, err := client.Get("/sites")
 
+    log.Printf("client mem address: %p", client)
     if err != nil {
         log.Printf("Error: ", err)
         return
@@ -285,6 +286,8 @@ func getSites(w http.ResponseWriter, r *http.Request) {
 
 func me(w http.ResponseWriter, r *http.Request) {
 
+
+
     user, err := getParam(r, USER_ID)
 
     if err != nil {
@@ -292,9 +295,22 @@ func me(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    code := r.FormValue("code")
+    clientByUserMutex.Lock()
 
-    client := getClient(*user, code, "http://localhost:8080/123/users/me")
+    var client *sdk.Client = nil
+    client = clientByUser[*user]
+
+    if client == nil {
+
+        code := r.FormValue("code")
+        client = getClient(*user, code, "http://localhost:8080/123/users/me")
+
+        if strings.Compare(code, "") != 0 {
+            clientByUser[*user] = client
+        }
+    }
+
+    clientByUserMutex.Unlock()
 
     response, err := client.Get("/users/me")
 
@@ -307,15 +323,11 @@ func me(w http.ResponseWriter, r *http.Request) {
     body, _ := ioutil.ReadAll(response.Body)
 
     if response.StatusCode == http.StatusForbidden {
-	/*
-        url := sdk.GetAuthURL(CLIENT_ID, "MLA", "http://localhost:8080/123/users/me")
-        fmt.Printf("url:%s", url)
-	*/
 
         url := sdk.GetAuthURL(CLIENT_ID, sdk.MLA, "http://localhost:8080/123/users/me")
         log.Printf("Returning Authentication URL:%s\n", url)
         http.Redirect(w, r, url, 301)
-        //body = []byte(url)
+
     }
 
     fmt.Fprintf(w, "%s", body)
@@ -323,23 +335,21 @@ func me(w http.ResponseWriter, r *http.Request) {
 
 func getClient(user, code, redirect string) *sdk.Client{
 
-    clientByUserMutex.Lock()
-    defer clientByUserMutex.Unlock()
-
     var client *sdk.Client
 
     if strings.Compare(code, "") == 0 {
-        client, _ = sdk.GetPublicClient()
+
+        client, _ = sdk.GetPublicApiClient()
+
     } else {
         var err error
-        client, err = sdk.NewClient(CLIENT_ID, code, CLIENT_SECRET, redirect)
+        client, err = sdk.GetPrivateApiClient(CLIENT_ID, code, CLIENT_SECRET, redirect)
 
         if err != nil {
             log.Printf("Error: %s", err.Error())
             return nil
         }
     }
-
 
     return client
 }

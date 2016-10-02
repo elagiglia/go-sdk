@@ -71,9 +71,12 @@ var refreshTok refreshToken
 var dbg Debug
 var publicClient = &Client{apiUrl:API_URL, auth:ANONYMOUS}
 
+var clientByUser map[string] *Client
+var clientByUserMutex sync.Mutex
 
 func init() {
     log.SetFlags(log.LstdFlags | log.Lshortfile)
+    clientByUser = make(map[string] *Client)
     refreshTok = hookRefreshToken
 }
 
@@ -106,17 +109,30 @@ func GetAuthURL(clientId int64, base_site, callback string) string {
     return authURL.string()
 }
 
-func GetClient(clientId int64, code string, secret string, redirectUrl string) (*Client, error){
+/*func GetClient(clientId int64, code string, secret string, redirectUrl string) (*Client, error){
     client := &Client{id:clientId, code:code, secret:secret, redirectUrl:redirectUrl, apiUrl:API_URL}
     return client, nil
-}
+}*/
 
 /*
 client id, code and secret are generated when creating your application
 */
-func NewClient(id int64, code string, secret string, redirectUrl string) (*Client, error) {
+func GetPrivateApiClient(id int64, code string, secret string, redirectUrl string) (*Client, error) {
 
-    client := &Client{id:id, code:code, secret:secret, redirectUrl:redirectUrl, apiUrl:API_URL}
+    clientByUserMutex.Lock()
+    defer clientByUserMutex.Unlock()
+
+    key := strconv.FormatInt(id, 10) + code
+
+    var client *Client
+
+    client = clientByUser[key]
+
+    if client == nil {
+        log.Printf("Why????'???")
+        client = &Client{id:id, code:code, secret:secret, redirectUrl:redirectUrl, apiUrl:API_URL}
+        clientByUser[key] = client
+    }
 
     auth, err := client.authorize()
 
@@ -132,7 +148,7 @@ func NewClient(id int64, code string, secret string, redirectUrl string) (*Clien
 /*
 This client may be used to access public API which does not need authorization
 */
-func GetPublicClient() (*Client, error) {
+func GetPublicApiClient() (*Client, error) {
 
     return publicClient, nil
 }
