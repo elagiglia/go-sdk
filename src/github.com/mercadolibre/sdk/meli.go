@@ -69,6 +69,8 @@ const (
 type refreshToken func (*Client) error
 var refreshTok refreshToken
 var dbg Debug
+var publicClient = &Client{apiUrl:API_URL, auth:ANONYMOUS}
+
 
 func init() {
     log.SetFlags(log.LstdFlags | log.Lshortfile)
@@ -130,11 +132,9 @@ func NewClient(id int64, code string, secret string, redirectUrl string) (*Clien
 /*
 This client may be used to access public API which does not need authorization
 */
-func NewAnonymousClient() (*Client, error) {
+func GetPublicClient() (*Client, error) {
 
-    client := &Client{apiUrl:API_URL, auth:ANONYMOUS}
-
-    return client, nil
+    return publicClient, nil
 }
 
 /*
