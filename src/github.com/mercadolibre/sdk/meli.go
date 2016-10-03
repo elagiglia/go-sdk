@@ -80,7 +80,7 @@ func init() {
     log.SetFlags(log.LstdFlags | log.Lshortfile)
     clientByUser = make(map[string] *Client)
     refreshTok = hookRefreshToken
-    dbg = true
+    dbg = false
 }
 
 
@@ -428,9 +428,6 @@ func (httpClient MeliHttpClient) Get(url string) (*http.Response, error){
 func (httpClient MeliHttpClient) Post(url string, bodyType string, body io.Reader) (*http.Response, error) {
 
     resp, err := http.Post(url, bodyType, body)
-
-
-    dbg.Printf("POSTING url: %s", url)
 
     if err != nil {
         dbg.Printf("Error while calling url: %s \n Error: %s", url, err)
