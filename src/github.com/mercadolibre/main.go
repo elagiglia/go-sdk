@@ -21,7 +21,6 @@ import (
     "github.com/gorilla/mux"
     "fmt"
     "log"
-    "encoding/json"
     "io/ioutil"
     "net/http"
     "sync"
@@ -30,83 +29,26 @@ import (
 )
 
 const (
-    CLIENT_CODE = "TG-57ec08ade4b0cd95a48b5297-226470907"
     CLIENT_ID = 2016679662291617
     CLIENT_SECRET = "bA89yqE9lPeXwcZkOLBTdKGDXYFbApuZ"
-
     HOST = "http://localhost:8080"
 )
 
-var clientByUser map[string] *sdk.Client
-var clientByUserMutex sync.Mutex
+var userCode map[string] string
+var userCodeMutex sync.Mutex
 
 func main() {
 
 
-    clientByUser = make(map[string] *sdk.Client)
+    userCode = make(map[string] string)
 
     log.Fatal(http.ListenAndServe(":8080", getRouter()))
-
-    /*Example 1)
-      Getting the URL to call for authenticating purposes
-      Once you generate the URL and call it, you will be redirected to a ML login page where your credentials will be asked. Then, after
-      entering your credentials you will obtained a CODE which will be used to get all the authorization tokens.
-    */
-    url := sdk.GetAuthURL(CLIENT_ID, sdk.MLA, "http://localhost:8080")
-    fmt.Printf("Example 1) \n\t Returning Authentication URL:%s\n", url)
-
-
-   /* Example 2)
-    Calling a private API example.
-
-*/
-    client, err := sdk.GetPrivateApiClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com")
-
-    if err != nil {
-        log.Printf("Error: %s", err.Error())
-        return
-    }
-
-    resp, err := client.Get("/users/me")
-
-    if err != nil {
-        log.Printf("Error %s\n", err.Error())
-    }
-
-    userInfo, _:= ioutil.ReadAll(resp.Body)
-    resp.Body.Close()
-
-    fmt.Printf("Example 2) \n \t Response of GET /users/me: %s\n", userInfo)
-
-      /*
-
-      Example 3)
-      This example shows you how to POST (publish) a new Item.
-      */
-
-
-    body :=    "{\"title\":\"Item de test - No Ofertar\",\"category_id\":\"MLA1912\",\"price\":10,\"currency_id\":\"ARS\",\"available_quantity\":1,\"buying_mode\":\"buy_it_now\",\"listing_type_id\":\"bronze\",\"condition\":\"new\",\"description\": \"Item:,  Ray-Ban WAYFARER Gloss Black RB2140 901  Model: RB2140. Size: 50mm. Name: WAYFARER. Color: Gloss Black. Includes Ray-Ban Carrying Case and Cleaning Cloth. New in Box\",\"video_id\": \"YOUTUBE_ID_HERE\",\"warranty\": \"12 months by Ray Ban\",\"pictures\":[{\"source\":\"http://upload.wikimedia.org/wikipedia/commons/f/fd/Ray_Ban_Original_Wayfarer.jpg\"},{\"source\":\"http://en.wikipedia.org/wiki/File:Teashades.gif\"}]}"
-
-    resp, err = client.Post("/items", body)
-
-    if err != nil {
-        log.Printf("Error %s\n", err.Error())
-    }
-
-    itemAsJs, _ := ioutil.ReadAll(resp.Body)
-    resp.Body.Close()
-    fmt.Printf("Example 3) \n\t Response of POST /items : %s\n", itemAsJs)
-
-    item := new(item)
-    err = json.Unmarshal(itemAsJs, item)
-    fmt.Printf("ItemId:%s\n", item.Id)
-
 
      /* Example 4)
       This example shows you how to PUT a change in an Item.*/
 
 
-    change := "{\"available_quantity\": 6}"
+    /*change := "{\"available_quantity\": 6}"
 
     resp, err = client.Put("/items/" + item.Id, &change)
 
@@ -119,8 +61,8 @@ func main() {
     fmt.Printf("Example 4) \n\t Response of PUT /items : %s\n", userInfo)
 
 
-   /*  Example 5)
-     This example shows you how to DELETE an Item.*/
+   *//*  Example 5)
+     This example shows you how to DELETE an Item.*//*
 
 
     resp, err = client.Delete("/items/" + item.Id)
@@ -131,7 +73,7 @@ func main() {
     userInfo, _= ioutil.ReadAll(resp.Body)
     resp.Body.Close()
 
-    fmt.Printf("Example 5 \n\t Response of DELETE /items : %s\n", userInfo)
+    fmt.Printf("Example 5 \n\t Response of DELETE /items : %s\n", userInfo)*/
 }
 
 type item struct {
@@ -160,6 +102,12 @@ func getRouter() *mux.Router{
             "GET",
             "/{userId}/items/{itemId}",
             getItem,
+        },
+        Route{
+            "item",
+            "POST",
+            "/{userId}/items/{itemId}",
+            postItem,
         },
         Route{
             "sites",
@@ -207,11 +155,39 @@ func getItem(w http.ResponseWriter, r *http.Request) {
     user := getParam(r, USER_ID)
     productId := getParam(r, ITEM_ID)
 
-    code := r.FormValue("code")
-    client := getClient(user, code, "http://localhost:8080/" + user + "/items/" + productId)
+    code := getUserCode(r)
 
+    client, err := sdk.NewClient(CLIENT_ID, code, CLIENT_SECRET, HOST + user + "/items/" + productId)
 
     response, err := client.Get("/items/" + productId)
+
+    if err != nil {
+        log.Printf("Error: ", err)
+        return
+    }
+
+    body, _ := ioutil.ReadAll(response.Body)
+
+    fmt.Fprintf(w, "%s", body)
+}
+
+/*
+This example shows you how to POST (publish) a new Item.
+*/
+
+func postItem(w http.ResponseWriter, r *http.Request) {
+
+
+    user := getParam(r, USER_ID)
+    productId := getParam(r, ITEM_ID)
+
+    code := getUserCode(r)
+
+    client, err := sdk.NewClient(CLIENT_ID, code, CLIENT_SECRET, HOST + user + "/items/" + productId)
+
+    item := "{\"title\":\"Item de test - No Ofertar\",\"category_id\":\"MLA1912\",\"price\":10,\"currency_id\":\"ARS\",\"available_quantity\":1,\"buying_mode\":\"buy_it_now\",\"listing_type_id\":\"bronze\",\"condition\":\"new\",\"description\": \"Item:,  Ray-Ban WAYFARER Gloss Black RB2140 901  Model: RB2140. Size: 50mm. Name: WAYFARER. Color: Gloss Black. Includes Ray-Ban Carrying Case and Cleaning Cloth. New in Box\",\"video_id\": \"YOUTUBE_ID_HERE\",\"warranty\": \"12 months by Ray Ban\",\"pictures\":[{\"source\":\"http://upload.wikimedia.org/wikipedia/commons/f/fd/Ray_Ban_Original_Wayfarer.jpg\"},{\"source\":\"http://en.wikipedia.org/wiki/File:Teashades.gif\"}]}"
+
+    response, err := client.Post("/items/", item)
 
     if err != nil {
         log.Printf("Error: ", err)
@@ -226,8 +202,9 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 func getSites(w http.ResponseWriter, r *http.Request) {
 
     user := getParam(r, USER_ID)
-    code := r.FormValue("code")
-    client := getClient(user, code, "http://localhost:8080/" + user + "/sites")
+    code := getUserCode(r)
+
+    client, err := sdk.NewClient(CLIENT_ID, code, CLIENT_SECRET, HOST + user + "/sites")
 
     response, err := client.Get("/sites")
 
@@ -245,28 +222,32 @@ func getSites(w http.ResponseWriter, r *http.Request) {
 func me(w http.ResponseWriter, r *http.Request) {
 
     user := getParam(r, USER_ID)
-    code := r.FormValue("code")
+    code := getUserCode(r)
 
-    client := getClientByUser(user, code, "http://localhost:8080/123/users/me")
+    client, err := sdk.NewClient(CLIENT_ID, code, CLIENT_SECRET, HOST + user + "/users/me")
+
+    if err != nil {
+        log.Printf("Error: ", err.Error())
+        return
+    }
 
     response, err := client.Get("/users/me")
 
-
     if err != nil {
-        log.Printf("Error: ", err)
+        log.Printf("Error: ", err.Error())
         return
     }
 
     body, _ := ioutil.ReadAll(response.Body)
 
-    /*Example 1)
+    /*Example
       If the API to be called needs authorization and authentication (private api), the the authentication URL needs to be generated.
       Once you generate the URL and call it, you will be redirected to a ML login page where your credentials will be asked. Then, after
       entering your credentials you will obtained a CODE which will be used to get all the authorization tokens.
     */
     if response.StatusCode == http.StatusForbidden {
 
-        url := sdk.GetAuthURL(CLIENT_ID, sdk.MLA, "http://localhost:8080/123/users/me")
+        url := sdk.GetAuthURL(CLIENT_ID, sdk.MLA, HOST + "/" + user + "/users/me")
         log.Printf("Returning Authentication URL:%s\n", url)
         http.Redirect(w, r, url, 301)
 
@@ -275,44 +256,22 @@ func me(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintf(w, "%s", body)
 }
 
-func getClient(user, code, redirect string) *sdk.Client{
 
-    var client *sdk.Client
+func getUserCode(r *http.Request) string {
+
+    user := getParam(r, USER_ID)
+    code := r.FormValue("code")
+
+    userCodeMutex.Lock()
+    defer userCodeMutex.Unlock()
 
     if strings.Compare(code, "") == 0 {
-
-        client, _ = sdk.GetPublicApiClient()
-
-    } else {
-        var err error
-        client, err = sdk.GetPrivateApiClient(CLIENT_ID, code, CLIENT_SECRET, redirect)
-
-        if err != nil {
-            log.Printf("Error: %s", err.Error())
-            return nil
-        }
+        code = userCode[user]
+    }else {
+        userCode[user] = code
     }
 
-    return client
-}
-
-func getClientByUser(user, code , redirectUrl string) *sdk.Client {
-
-    clientByUserMutex.Lock()
-    defer clientByUserMutex.Unlock()
-
-    client := clientByUser[user]
-
-    if client == nil {
-
-        client = getClient(user, code, redirectUrl)
-
-        if strings.Compare(code, "") != 0 {
-            clientByUser[user] = client
-        }
-    }
-
-    return client
+    return code
 }
 
 func getParam(r *http.Request, param string) string {

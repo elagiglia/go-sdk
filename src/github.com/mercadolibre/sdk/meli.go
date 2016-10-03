@@ -68,7 +68,7 @@ const (
 type refreshToken func (*Client) error
 
 var refreshTok refreshToken
-var publicClient = &Client{apiUrl:API_URL, auth:ANONYMOUS}
+var publicClient = &Client{apiUrl:API_URL, auth:ANONYMOUS, httpClient:MeliHttpClient{}}
 var clientByUser map[string] *Client
 var clientByUserMutex sync.Mutex
 var ANONYMOUS = Authorization{}
@@ -80,7 +80,7 @@ func init() {
     log.SetFlags(log.LstdFlags | log.Lshortfile)
     clientByUser = make(map[string] *Client)
     refreshTok = hookRefreshToken
-    //dbg = true
+    dbg = true
 }
 
 
@@ -112,40 +112,38 @@ This method returns a Client which can be used to call mercadolibre private API
 client id, code and secret are generated when creating your application
 
 */
-func GetPrivateApiClient(id int64, code string, secret string, redirectUrl string) (*Client, error) {
+func NewClient(id int64, userCode string, secret string, redirectUrl string) (*Client, error) {
+
+    if strings.Compare(userCode, "") == 0 {
+        return publicClient, nil
+    }
 
     clientByUserMutex.Lock()
     defer clientByUserMutex.Unlock()
 
-    key := strconv.FormatInt(id, 10) + code
+    key := strconv.FormatInt(id, 10) + userCode
 
     var client *Client
 
     client = clientByUser[key]
 
     if client == nil {
-        client = &Client{id:id, code:code, secret:secret, redirectUrl:redirectUrl, apiUrl:API_URL, httpClient:MeliHttpClient{}}
-        clientByUser[key] = client
-        dbg.Printf("Building a client: %p for clientid:%d code:%s\n", client, id, code)
+
+        client = &Client{id:id, code:userCode, secret:secret, redirectUrl:redirectUrl, apiUrl:API_URL, httpClient:MeliHttpClient{}}
+        dbg.Printf("Building a client: %p for clientid:%d code:%s\n", client, id, userCode)
     }
 
     auth, err := client.authorize()
 
     if err != nil {
+        log.Printf("error: %s", err.Error())
         return nil, err
     }
 
-    client.auth = *auth
+    clientByUser[key] = client
+        client.auth = *auth
 
     return client, nil
-}
-
-/*
-This client may be used to access public API which does not need authorization
-*/
-func GetPublicApiClient() (*Client, error) {
-
-    return publicClient, nil
 }
 
 /*
@@ -430,6 +428,9 @@ func (httpClient MeliHttpClient) Get(url string) (*http.Response, error){
 func (httpClient MeliHttpClient) Post(url string, bodyType string, body io.Reader) (*http.Response, error) {
 
     resp, err := http.Post(url, bodyType, body)
+
+
+    dbg.Printf("POSTING url: %s", url)
 
     if err != nil {
         dbg.Printf("Error while calling url: %s \n Error: %s", url, err)
