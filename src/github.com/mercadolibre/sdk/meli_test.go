@@ -24,6 +24,9 @@ import (
     "io/ioutil"
     "strings"
     "sync"
+    "io"
+    "bytes"
+    "net/url"
 )
 
 const (
@@ -65,6 +68,7 @@ func Test_GET_public_API_sites_works_properly ( t *testing.T){
     }
 
     if resp.StatusCode != http.StatusOK {
+        log.Printf("Error:Status was different from the expected one %s\n", err)
         t.FailNow()
     }
 
@@ -257,4 +261,178 @@ var wg sync.WaitGroup
 func callHttpMethod(client *Client){
     defer wg.Done()
     client.Get("/users/me")
+}
+
+/*
+Clients for testing purposes
+ */
+func newTestAnonymousClient(apiUrl string) (*Client, error) {
+
+    client := &Client{apiUrl:apiUrl, auth:ANONYMOUS, httpClient:MockHttpClient{}}
+
+    return client, nil
+}
+
+func newTestClient(id int64, code string, secret string, redirectUrl string, apiUrl string) (*Client, error){
+
+    client := &Client{id:id, code:code, secret:secret, redirectUrl:redirectUrl, apiUrl:apiUrl, httpClient:MockHttpClient{}}
+
+    auth, err := client.authorize()
+
+    if err != nil {
+        return nil, err
+    }
+
+    client.auth = *auth
+
+    return client, nil
+}
+
+type MockHttpClient struct{
+
+}
+
+
+func (httpClient MockHttpClient) Get(url string) (*http.Response, error){
+
+    log.Printf("Getting url %s ", url)
+    resp := new (http.Response)
+
+    if strings.Contains(url,"/sites") {
+        resp.Body = ioutil.NopCloser(bytes.NewReader([]byte("[{\"id\":\"MLA\",\"name\":\"Argentina\"},{\"id\":\"MLB\",\"name\":\"Brasil\"},{\"id\":\"MCO\",\"name\":\"Colombia\"},{\"id\":\"MCR\",\"name\":\"Costa Rica\"},{\"id\":\"MEC\",\"name\":\"Ecuador\"},{\"id\":\"MLC\",\"name\":\"Chile\"},{\"id\":\"MLM\",\"name\":\"Mexico\"},{\"id\":\"MLU\",\"name\":\"Uruguay\"},{\"id\":\"MLV\",\"name\":\"Venezuela\"},{\"id\":\"MPA\",\"name\":\"Panamá\"},{\"id\":\"MPE\",\"name\":\"Perú\"},{\"id\":\"MPT\",\"name\":\"Portugal\"},{\"id\":\"MRD\",\"name\":\"Dominicana\"}]\")))")))
+        resp.StatusCode = http.StatusOK
+    }
+
+    if strings.Contains(url, "/users/me") {
+        resp.Body = ioutil.NopCloser(bytes.NewReader([]byte("")))
+        resp.StatusCode = http.StatusOK
+    }
+
+    return resp, nil
+}
+
+
+func (httpClient MockHttpClient) Post(uri string, bodyType string, body io.Reader) (*http.Response, error) {
+
+    resp := new (http.Response)
+    fullUri, _ := url.Parse(uri)
+
+    if strings.Contains(uri,"/oauth/token") {
+
+        grant_type := fullUri.Query().Get("grant_type")
+
+        if strings.Compare(grant_type, "authorization_code") == 0 {
+            log.Printf("auth")
+            code := fullUri.Query().Get("code")
+
+            if strings.Compare(code, "bad code") == 0  {
+
+                log.Printf("reader")
+                resp.Body = ioutil.NopCloser(bytes.NewReader([]byte("{\"message\":\"Error validando el parámetro code\",\"error\":\"invalid_grant\"}")))
+                resp.StatusCode = http.StatusNotFound
+
+            } else if strings.Compare(code, "valid code without refresh token") == 0 {
+
+                log.Printf("valid code")
+                resp.Body = ioutil.NopCloser(bytes.NewReader([]byte(
+                "{\"access_token\" : \"valid token\"," +
+                "\"token_type\" : \"bearer\"," +
+                "\"expires_in\" : 10800," +
+                "\"scope\" : \"write read\"}")))
+
+                resp.StatusCode = http.StatusOK
+
+            } else if strings.Compare(code, "valid code with refresh token") == 0 {
+
+                log.Printf("valid code with refresh")
+                resp.Body = ioutil.NopCloser(bytes.NewReader([]byte(
+                "{\"access_token\":\"valid token\"," +
+                "\"token_type\":\"bearer\"," +
+                "\"expires_in\":10800," +
+                "\"refresh_token\":\"valid refresh token\"," +
+                "\"scope\":\"write read\"}")))
+
+            }
+
+        } else if strings.Compare(grant_type, "refresh_token") == 0 {
+
+            refresh := fullUri.Query().Get("refresh_token")
+
+            if strings.Compare(refresh, "valid refresh token") == 0 {
+                log.Printf("valid code with refresh")
+                resp.Body = ioutil.NopCloser(bytes.NewReader([]byte(
+                "{\"access_token\":\"valid token\"," +
+                "\"token_type\":\"bearer\"," +
+                "\"expires_in\":10800," +
+                "\"scope\":\"write read\"}")))
+            }
+        }
+
+        resp.StatusCode = http.StatusOK
+
+    } else if strings.Contains(uri,"/items") {
+
+        access_token := fullUri.Query().Get("access_token")
+
+        if strings.Compare(access_token, "valid token") == 0 {
+
+            b, _ := ioutil.ReadAll(body)
+            if b != nil && strings.Contains(string(b),"bar") {
+                resp.StatusCode = http.StatusCreated
+            } else {
+                resp.StatusCode = http.StatusNotFound
+            }
+        }
+    }
+
+    return resp, nil
+}
+
+func (httpClient MockHttpClient) Put(uri string, body io.Reader) (*http.Response, error){
+
+    resp := new (http.Response)
+    fullUri, _ := url.Parse(uri)
+
+    if strings.Contains(uri,"/items/123") {
+
+        access_token := fullUri.Query().Get("access_token")
+
+        if strings.Compare(access_token, "valid token") == 0 {
+
+            b, _ := ioutil.ReadAll(body)
+            if b != nil && strings.Contains(string(b),"bar") {
+                resp.StatusCode = http.StatusOK
+            } else {
+                resp.StatusCode = http.StatusNotFound
+            }
+
+        } else if strings.Compare(access_token, "expired token") == 0 {
+            resp.StatusCode = http.StatusNotFound
+        } else {
+            resp.StatusCode = http.StatusForbidden
+        }
+    }
+
+    return resp, nil
+}
+
+func (httpClient MockHttpClient) Delete(uri string, body io.Reader) (*http.Response, error){
+
+    resp := new (http.Response)
+    fullUri, _ := url.Parse(uri)
+
+    if strings.Contains(uri,"/items/123") {
+        access_token := fullUri.Query().Get("access_token")
+
+        if strings.Compare(access_token, "valid token") == 0 {
+            resp.StatusCode = http.StatusOK
+        } else if strings.Compare(access_token, "expired token") == 0 {
+            resp.StatusCode = http.StatusNotFound
+        } else {
+            resp.StatusCode = http.StatusForbidden
+        }
+    }
+
+    return resp, nil
+
 }

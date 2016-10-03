@@ -34,7 +34,6 @@ import (
     "strconv"
     "bytes"
     "net/http"
-    "fmt"
     "io"
     "encoding/json"
     "io/ioutil"
@@ -63,38 +62,37 @@ const (
 
     AUTHORIZATION_CODE = "authorization_code"
     REFRESH_TOKEN = "refresh_token"
-
+    API_URL = "https://api.mercadolibre.com"
 )
 
 type refreshToken func (*Client) error
-var refreshTok refreshToken
-var dbg Debug
-var publicClient = &Client{apiUrl:API_URL, auth:ANONYMOUS}
 
+var refreshTok refreshToken
+var publicClient = &Client{apiUrl:API_URL, auth:ANONYMOUS}
 var clientByUser map[string] *Client
 var clientByUserMutex sync.Mutex
+var ANONYMOUS = Authorization{}
+var authMutex = &sync.Mutex{}
+
+var dbg Debug
 
 func init() {
     log.SetFlags(log.LstdFlags | log.Lshortfile)
     clientByUser = make(map[string] *Client)
     refreshTok = hookRefreshToken
+    //dbg = true
 }
 
-var ANONYMOUS = Authorization{}
-var authMutex = &sync.Mutex{}
 
 type Client struct {
-    apiUrl string
-    id     int64
-    secret string
-    code   string
+    apiUrl      string
+    id          int64
+    secret      string
+    code        string
     redirectUrl string
-    auth Authorization
+    auth        Authorization
+    httpClient  HttpClient
 }
-const (
-    API_URL = "https://api.mercadolibre.com"
-)
-
 
 /*
 This function returns the URL to be used for user authentication and authorization
@@ -109,13 +107,10 @@ func GetAuthURL(clientId int64, base_site, callback string) string {
     return authURL.string()
 }
 
-/*func GetClient(clientId int64, code string, secret string, redirectUrl string) (*Client, error){
-    client := &Client{id:clientId, code:code, secret:secret, redirectUrl:redirectUrl, apiUrl:API_URL}
-    return client, nil
-}*/
-
 /*
+This method returns a Client which can be used to call mercadolibre private API
 client id, code and secret are generated when creating your application
+
 */
 func GetPrivateApiClient(id int64, code string, secret string, redirectUrl string) (*Client, error) {
 
@@ -129,9 +124,9 @@ func GetPrivateApiClient(id int64, code string, secret string, redirectUrl strin
     client = clientByUser[key]
 
     if client == nil {
-        log.Printf("Why????'???")
-        client = &Client{id:id, code:code, secret:secret, redirectUrl:redirectUrl, apiUrl:API_URL}
+        client = &Client{id:id, code:code, secret:secret, redirectUrl:redirectUrl, apiUrl:API_URL, httpClient:MeliHttpClient{}}
         clientByUser[key] = client
+        dbg.Printf("Building a client: %p for clientid:%d code:%s\n", client, id, code)
     }
 
     auth, err := client.authorize()
@@ -154,31 +149,6 @@ func GetPublicApiClient() (*Client, error) {
 }
 
 /*
-Clients for testing purposes
- */
-func newTestAnonymousClient(apiUrl string) (*Client, error) {
-
-    client := &Client{apiUrl:apiUrl, auth:ANONYMOUS}
-
-    return client, nil
-}
-
-func newTestClient(id int64, code string, secret string, redirectUrl string, apiUrl string) (*Client, error){
-
-    client := &Client{id:id, code:code, secret:secret, redirectUrl:redirectUrl, apiUrl:apiUrl}
-
-    auth, err := client.authorize()
-
-    if err != nil {
-        return nil, err
-    }
-
-    client.auth = *auth
-
-    return client, nil
-}
-
-/*
 This method returns an Authorization object which contains the needed tokens
 to interact with ML API
  */
@@ -191,7 +161,7 @@ func (client *Client) authorize() (*Authorization, error) {
     authURL.addCode(client.code)
     authURL.addRedirectUri(client.redirectUrl)
 
-    resp, err := http.Post(authURL.string(), "application/json", *(new(io.Reader)))
+    resp, err := client.httpClient.Post(authURL.string(), "application/json", *(new(io.Reader)))
 
     if err != nil {
         dbg.Printf("Error when posting: %s", err)
@@ -226,7 +196,7 @@ func (client *Client) Get(resourcePath string) (*http.Response, error) {
         return nil, err
     }
 
-    resp, err := http.Get(apiUrl.string())
+    resp, err := client.httpClient.Get(apiUrl.string())
 
     if err != nil {
         dbg.Printf("Error while calling url: %s \n Error: %s", apiUrl.string(), err)
@@ -245,7 +215,7 @@ func (client *Client) Post(resourcePath string, body string) (*http.Response, er
         return nil, err
     }
 
-    resp, err := http.Post(apiUrl.string(), "application/json", bytes.NewReader([]byte(body)))
+    resp, err := client.httpClient.Post(apiUrl.string(), "application/json", bytes.NewReader([]byte(body)))
 
     if err != nil {
         dbg.Printf("Error while calling url: %s \n Error: %s", apiUrl.string(), err)
@@ -264,22 +234,10 @@ func (client *Client) Put(resourcePath string, body *string) (*http.Response, er
         return nil, err
     }
 
-    req, err := http.NewRequest(http.MethodPut, apiUrl.string(), strings.NewReader(*body))
+    resp, err := client.httpClient.Put(apiUrl.string(), strings.NewReader(*body))
 
-    if err != nil {
-        dbg.Printf("Error when creating PUT request %d.", err)
-        return nil, err
-    }
 
-    req.Header.Add("Content-Type", "application/json")
-    resp, err := http.DefaultClient.Do(req)
-
-    if err != nil {
-        dbg.Printf("Error while calling url: %s\n Error: %s", apiUrl.string(), err)
-        return nil, err
-    }
-
-    return resp, nil
+    return resp, err
 }
 
 func (client *Client) Delete(resourcePath string ) (*http.Response, error) {
@@ -291,19 +249,7 @@ func (client *Client) Delete(resourcePath string ) (*http.Response, error) {
         return nil, err
     }
 
-    req, err := http.NewRequest(http.MethodDelete, apiUrl.string(), nil)
-
-    if err != nil {
-        dbg.Printf("Error when creating Delete request %d.", err)
-        return nil, err
-    }
-
-    resp, err := http.DefaultClient.Do(req)
-
-    if err != nil {
-        dbg.Printf("Error while calling url: %s \n Error: %s", apiUrl.string(), err)
-        return nil, err
-    }
+    resp, err := client.httpClient.Delete(apiUrl.string(), nil)
 
     return resp, nil
 }
@@ -317,7 +263,7 @@ func hookRefreshToken(client *Client) error {
     authorizationURL.addClientSecret(client.secret)
     authorizationURL.addRefreshToken(client.auth.RefreshToken)
 
-    resp, err := http.Post(authorizationURL.string(), "application/json", *(new(io.Reader)))
+    resp, err := client.httpClient.Post(authorizationURL.string(), "application/json", *(new(io.Reader)))
 
     if err != nil {
         dbg.Printf("Error while refreshing token: %s\n", err.Error())
@@ -390,7 +336,7 @@ type Debug bool
 
 func (d Debug) Printf(s string, a ...interface{}) {
     if d {
-        fmt.Printf(s, a...)
+        log.Printf(s, a...)
     }
 }
 
@@ -453,4 +399,72 @@ func newAuthorizationURL(baseURL string) *AuthorizationURL{
     authURL := new(AuthorizationURL)
     authURL.url.WriteString(baseURL)
     return authURL
+}
+
+
+
+type HttpClient interface {
+    Get(url string) (*http.Response, error)
+    Post(url string, bodyType string, body io.Reader) (*http.Response, error)
+    Put(url string, body io.Reader) (*http.Response, error)
+    Delete(url string, body io.Reader) (*http.Response, error)
+}
+
+type MeliHttpClient struct {
+
+}
+
+func (httpClient MeliHttpClient) Get(url string) (*http.Response, error){
+
+    resp, err := http.Get(url)
+
+    if err != nil {
+        dbg.Printf("Error while calling url: %s \n Error: %s", url, err)
+        return nil, err
+    }
+
+    return resp, nil
+}
+
+
+func (httpClient MeliHttpClient) Post(url string, bodyType string, body io.Reader) (*http.Response, error) {
+
+    resp, err := http.Post(url, bodyType, body)
+
+    if err != nil {
+        dbg.Printf("Error while calling url: %s \n Error: %s", url, err)
+        return nil, err
+    }
+
+    return resp, nil
+}
+
+func (httpClient MeliHttpClient) Put(url string, body io.Reader) (*http.Response, error){
+
+    return httpClient.executeHttpRequest(http.MethodPut, url, body)
+}
+
+func (httpClient MeliHttpClient) Delete(url string, body io.Reader) (*http.Response, error){
+
+    return httpClient.executeHttpRequest(http.MethodDelete, url, body)
+
+}
+
+func (httpClient MeliHttpClient) executeHttpRequest(method string, url string, body io.Reader) (*http.Response, error) {
+
+    req, err := http.NewRequest(method, url, body)
+
+    if err != nil {
+        dbg.Printf("Error when creating %s request %d.", http.MethodDelete, err)
+        return nil, err
+    }
+
+    resp, err := http.DefaultClient.Do(req)
+
+    if err != nil {
+        dbg.Printf("Error while calling url: %s\n Error: %s", url, err)
+        return nil, err
+    }
+
+    return resp, nil
 }

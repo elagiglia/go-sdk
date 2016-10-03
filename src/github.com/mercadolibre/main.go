@@ -27,7 +27,6 @@ import (
     "sync"
     "strings"
     "bytes"
-    "errors"
 )
 
 const (
@@ -179,31 +178,7 @@ func getRouter() *mux.Router{
             "GET",
             "/",
             returnLinks,
-        },/*
-        Route{
-            "getMyConfig",
-            "GET",
-            "/users/{id}/myconfig",
-            service.handleGetPurchaseById,
         },
-        Route{
-            "post_purchases",
-            "POST",
-            "/users/{userid}/purchases",
-            service.handlePostPurchases,
-        },
-        Route{
-            "delete_purchase",
-            "DELETE",
-            "/users/{userid}/purchases/{id}",
-            service.handleDeletePurchase,
-        },
-        Route{
-            "get_items_description",
-            "GET",
-            "/users/{userid}/items",
-            service.handleGetItemsDescription,
-        },*/
     }
     router := mux.NewRouter();
 
@@ -229,25 +204,14 @@ const ITEM_ID = "itemId"
 func getItem(w http.ResponseWriter, r *http.Request) {
 
 
-    user, err := getParam(r, USER_ID)
-
-    if err != nil {
-        log.Printf("%s", err)
-        return
-    }
-
-    productId, err := getParam(r, ITEM_ID)
-
-    if err != nil {
-        log.Printf("%s", err)
-        return
-    }
+    user := getParam(r, USER_ID)
+    productId := getParam(r, ITEM_ID)
 
     code := r.FormValue("code")
-    client := getClient(*user, code, "http://localhost:8080/" + *user + "/items/" + *productId)
+    client := getClient(user, code, "http://localhost:8080/" + user + "/items/" + productId)
 
 
-    response, err := client.Get("/items/" + *productId)
+    response, err := client.Get("/items/" + productId)
 
     if err != nil {
         log.Printf("Error: ", err)
@@ -261,15 +225,9 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 
 func getSites(w http.ResponseWriter, r *http.Request) {
 
-    user, err := getParam(r, USER_ID)
-
-    if err != nil {
-        log.Printf("%s", err)
-        return
-    }
-
+    user := getParam(r, USER_ID)
     code := r.FormValue("code")
-    client := getClient(*user, code, "http://localhost:8080/" + *user + "/sites")
+    client := getClient(user, code, "http://localhost:8080/" + user + "/sites")
 
     response, err := client.Get("/sites")
 
@@ -286,31 +244,10 @@ func getSites(w http.ResponseWriter, r *http.Request) {
 
 func me(w http.ResponseWriter, r *http.Request) {
 
+    user := getParam(r, USER_ID)
+    code := r.FormValue("code")
 
-
-    user, err := getParam(r, USER_ID)
-
-    if err != nil {
-        log.Printf("%s", err)
-        return
-    }
-
-    clientByUserMutex.Lock()
-
-    var client *sdk.Client = nil
-    client = clientByUser[*user]
-
-    if client == nil {
-
-        code := r.FormValue("code")
-        client = getClient(*user, code, "http://localhost:8080/123/users/me")
-
-        if strings.Compare(code, "") != 0 {
-            clientByUser[*user] = client
-        }
-    }
-
-    clientByUserMutex.Unlock()
+    client := getClientByUser(user, code, "http://localhost:8080/123/users/me")
 
     response, err := client.Get("/users/me")
 
@@ -322,6 +259,11 @@ func me(w http.ResponseWriter, r *http.Request) {
 
     body, _ := ioutil.ReadAll(response.Body)
 
+    /*Example 1)
+      If the API to be called needs authorization and authentication (private api), the the authentication URL needs to be generated.
+      Once you generate the URL and call it, you will be redirected to a ML login page where your credentials will be asked. Then, after
+      entering your credentials you will obtained a CODE which will be used to get all the authorization tokens.
+    */
     if response.StatusCode == http.StatusForbidden {
 
         url := sdk.GetAuthURL(CLIENT_ID, sdk.MLA, "http://localhost:8080/123/users/me")
@@ -354,17 +296,35 @@ func getClient(user, code, redirect string) *sdk.Client{
     return client
 }
 
+func getClientByUser(user, code , redirectUrl string) *sdk.Client {
 
-func getParam(r *http.Request, param string) (*string, error) {
+    clientByUserMutex.Lock()
+    defer clientByUserMutex.Unlock()
+
+    client := clientByUser[user]
+
+    if client == nil {
+
+        client = getClient(user, code, redirectUrl)
+
+        if strings.Compare(code, "") != 0 {
+            clientByUser[user] = client
+        }
+    }
+
+    return client
+}
+
+func getParam(r *http.Request, param string) string {
 
     pathParams := mux.Vars(r)
     value :=  pathParams[param]
 
     if strings.Compare(value, "") == 0 {
-        return nil, errors.New(fmt.Sprintf("%s is missing", param))
+        log.Printf("%s is missing", param)
     }
 
-    return &value, nil
+    return value
 }
 
 func returnLinks(w http.ResponseWriter, r *http.Request) {
