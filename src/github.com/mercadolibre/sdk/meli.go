@@ -80,7 +80,7 @@ func init() {
     log.SetFlags(log.LstdFlags | log.Lshortfile)
     clientByUser = make(map[string] *Client)
     refreshTok = hookRefreshToken
-    dbg = false
+    dbg = true
 }
 
 
@@ -108,11 +108,16 @@ func GetAuthURL(clientId int64, base_site, callback string) string {
 }
 
 /*
-This method returns a Client which can be used to call mercadolibre private API
+This method returns a Client which can be used to call mercadolibre API
 client id, code and secret are generated when creating your application
 
+If userCode is empty, a client will be returned, but this one is only able to query
+the public mercadolibre API.
+
+If userCode has a value, then an authenticated client will be returned. This one is able to query either public and private
+mercadolibre API.
 */
-func NewClient(id int64, userCode string, secret string, redirectUrl string) (*Client, error) {
+func Meli(id int64, userCode string, secret string, redirectUrl string) (*Client, error) {
 
     if strings.Compare(userCode, "") == 0 {
         return publicClient, nil
@@ -120,6 +125,7 @@ func NewClient(id int64, userCode string, secret string, redirectUrl string) (*C
 
     clientByUserMutex.Lock()
     defer clientByUserMutex.Unlock()
+
 
     key := strconv.FormatInt(id, 10) + userCode
 
@@ -131,17 +137,18 @@ func NewClient(id int64, userCode string, secret string, redirectUrl string) (*C
 
         client = &Client{id:id, code:userCode, secret:secret, redirectUrl:redirectUrl, apiUrl:API_URL, httpClient:MeliHttpClient{}}
         dbg.Printf("Building a client: %p for clientid:%d code:%s\n", client, id, userCode)
-    }
 
-    auth, err := client.authorize()
+        auth, err := client.authorize()
 
-    if err != nil {
-        log.Printf("error: %s", err.Error())
-        return nil, err
-    }
+        if err != nil {
+            log.Printf("error: %s", err.Error())
+            return nil, err
+        }
 
-    clientByUser[key] = client
+        clientByUser[key] = client
         client.auth = *auth
+    }
+
 
     return client, nil
 }
@@ -159,6 +166,7 @@ func (client *Client) authorize() (*Authorization, error) {
     authURL.addCode(client.code)
     authURL.addRedirectUri(client.redirectUrl)
 
+    dbg.Printf("POSTING URL: %s", authURL.string())
     resp, err := client.httpClient.Post(authURL.string(), "application/json", *(new(io.Reader)))
 
     if err != nil {
@@ -398,8 +406,6 @@ func newAuthorizationURL(baseURL string) *AuthorizationURL{
     authURL.url.WriteString(baseURL)
     return authURL
 }
-
-
 
 type HttpClient interface {
     Get(url string) (*http.Response, error)

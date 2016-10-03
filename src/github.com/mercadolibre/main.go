@@ -122,6 +122,12 @@ func getRouter() *mux.Router{
             me,
         },
         Route{
+            "addresses",
+            "GET",
+            "/{userId}/users/addresses",
+            addresses,
+        },
+        Route{
             "index",
             "GET",
             "/",
@@ -154,20 +160,20 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 
     user := getParam(r, USER_ID)
     productId := getParam(r, ITEM_ID)
-
     code := getUserCode(r)
+    resource := "/items/" + productId
+    redirectURL := HOST + "/" + user + "/items/" + productId
 
-    client, err := sdk.NewClient(CLIENT_ID, code, CLIENT_SECRET, HOST + "/" + user + "/items/" + productId)
+    //Getting a client to make the https://api.mercadolibre.com/items/MLU439286635
+    client, err := sdk.Meli(CLIENT_ID, code, CLIENT_SECRET, redirectURL)
 
-    response, err := client.Get("/items/" + productId)
-
-    if err != nil {
-        log.Printf("Error: ", err)
+    var response *http.Response
+    if response, err = client.Get(resource); err != nil {
+        log.Printf("Error: ", err.Error())
         return
     }
 
     body, _ := ioutil.ReadAll(response.Body)
-
     fmt.Fprintf(w, "%s", body)
 }
 
@@ -177,13 +183,13 @@ This example shows you how to POST (publish) a new Item.
 
 func postItem(w http.ResponseWriter, r *http.Request) {
 
-
     user := getParam(r, USER_ID)
     productId := getParam(r, ITEM_ID)
 
     code := getUserCode(r)
+    redirectURL := HOST + "/" + user + "/items/" + productId
 
-    client, err := sdk.NewClient(CLIENT_ID, code, CLIENT_SECRET, HOST + "/" + user + "/items/" + productId)
+    client, err := sdk.Meli(CLIENT_ID, code, CLIENT_SECRET, redirectURL)
 
     item := "{\"title\":\"Item de test - No Ofertar\",\"category_id\":\"MLA1912\",\"price\":10,\"currency_id\":\"ARS\",\"available_quantity\":1,\"buying_mode\":\"buy_it_now\",\"listing_type_id\":\"bronze\",\"condition\":\"new\",\"description\": \"Item:,  Ray-Ban WAYFARER Gloss Black RB2140 901  Model: RB2140. Size: 50mm. Name: WAYFARER. Color: Gloss Black. Includes Ray-Ban Carrying Case and Cleaning Cloth. New in Box\",\"video_id\": \"YOUTUBE_ID_HERE\",\"warranty\": \"12 months by Ray Ban\",\"pictures\":[{\"source\":\"http://upload.wikimedia.org/wikipedia/commons/f/fd/Ray_Ban_Original_Wayfarer.jpg\"},{\"source\":\"http://en.wikipedia.org/wiki/File:Teashades.gif\"}]}"
 
@@ -193,58 +199,53 @@ func postItem(w http.ResponseWriter, r *http.Request) {
         log.Printf("Error: ", err)
         return
     }
-
-    body, _ := ioutil.ReadAll(response.Body)
-
-    fmt.Fprintf(w, "%s", body)
+    printOutput(w, response)
 }
 
 func getSites(w http.ResponseWriter, r *http.Request) {
 
     user := getParam(r, USER_ID)
     code := getUserCode(r)
+    resource := "/sites"
 
-    client, err := sdk.NewClient(CLIENT_ID, code, CLIENT_SECRET, HOST + "/" + user + "/sites")
+    redirectURL := HOST + "/" + user + resource
+    client, err := sdk.Meli(CLIENT_ID, code, CLIENT_SECRET, redirectURL)
 
-    response, err := client.Get("/sites")
-
-    log.Printf("client mem address: %p", client)
-    if err != nil {
-        log.Printf("Error: ", err)
+    var response *http.Response
+    if response, err = client.Get(resource); err != nil {
+        log.Printf("Error: ", err.Error())
         return
     }
 
-    body, _ := ioutil.ReadAll(response.Body)
-
-    fmt.Fprintf(w, "%s", body)
+    printOutput(w, response)
 }
 
 func me(w http.ResponseWriter, r *http.Request) {
 
     user := getParam(r, USER_ID)
     code := getUserCode(r)
+    resource := "/users/me"
 
-    client, err := sdk.NewClient(CLIENT_ID, code, CLIENT_SECRET, HOST + "/" + user + "/users/me")
-
-    if err != nil {
-        log.Printf("Error: ", err.Error())
-        return
-    }
-
-    response, err := client.Get("/users/me")
+    redirectURL := HOST + "/" + user + resource
+    client, err := sdk.Meli(CLIENT_ID, code, CLIENT_SECRET, redirectURL)
 
     if err != nil {
         log.Printf("Error: ", err.Error())
         return
     }
-
-    body, _ := ioutil.ReadAll(response.Body)
 
     /*Example
       If the API to be called needs authorization and authentication (private api), the the authentication URL needs to be generated.
       Once you generate the URL and call it, you will be redirected to a ML login page where your credentials will be asked. Then, after
       entering your credentials you will obtained a CODE which will be used to get all the authorization tokens.
     */
+
+    var response *http.Response
+    if response, err = client.Get("/users/me"); err != nil {
+        log.Printf("Error: ", err.Error())
+        return
+    }
+
     if response.StatusCode == http.StatusForbidden {
 
         url := sdk.GetAuthURL(CLIENT_ID, sdk.MLA, HOST + "/" + user + "/users/me")
@@ -253,10 +254,52 @@ func me(w http.ResponseWriter, r *http.Request) {
 
     }
 
-    fmt.Fprintf(w, "%s", body)
+    printOutput(w, response)
+}
+/*
+This method responses when clicking in addresses link. After that, this will call
+https://api.mercadolibre.com/users/214509008/addresses?access_token=$ACCESS_TOKEN
+to get the addresses of the user.
+ */
+
+func addresses(w http.ResponseWriter, r *http.Request) {
+
+    user := getParam(r, USER_ID)
+    code := getUserCode(r)
+
+    resource := "/users/" + user + "/addresses"
+    redirectURL := HOST + "/" + user  + "/users/addresses"
+
+    client, err := sdk.Meli(CLIENT_ID, code, CLIENT_SECRET, redirectURL)
+
+    if err != nil {
+        log.Printf("Error: ", err.Error())
+        return
+    }
+
+    var response *http.Response
+    if response, err = client.Get(resource); err != nil {
+        log.Printf("Error: ", err.Error())
+        return
+    }
+
+    /*Example
+      If the API to be called needs authorization/authentication (private api), then the authentication URL needs to be generated.
+      Once you generate the URL and call it, you will be redirected to a ML login page where your credentials will be asked. Then, after
+      entering your credentials you will obtain a CODE which will be used to get all the authorization tokens.
+    */
+    if response.StatusCode == http.StatusForbidden {
+        url := sdk.GetAuthURL(CLIENT_ID, sdk.MLA, redirectURL)
+        log.Printf("Returning Authentication URL:%s\n", url)
+        http.Redirect(w, r, url, 301)
+    }
+
+    printOutput(w, response)
 }
 
-
+/**
+This method returns the code for a specific user if it was previously sent.
+ */
 func getUserCode(r *http.Request) string {
 
     user := getParam(r, USER_ID)
@@ -286,16 +329,21 @@ func getParam(r *http.Request, param string) string {
     return value
 }
 
+func printOutput(w http.ResponseWriter, response *http.Response){
+    body, _ := ioutil.ReadAll(response.Body)
+    fmt.Fprintf(w, "%s", body)
+}
+
 func returnLinks(w http.ResponseWriter, r *http.Request) {
 
-    userId := "/123"
+    userId := "/214509008"  //id from test user
     href := "href=" + HOST  + userId
 
     var links bytes.Buffer
     links.WriteString("<a " + href + "/items/MLU439286635>" + HOST + "/items/MLU439286635</a><br>")
     links.WriteString("<a " + href + "/sites>" + HOST + "/sites</a><br>")
     links.WriteString("<a " + href + "/users/me>" + HOST + "/users/me</a><br>")
-
+    links.WriteString("<a " + href + "/users/addresses>" + HOST + "/users/addresses</a><br>")
 
     fmt.Fprintf(w, "%s", links.String())
 }
