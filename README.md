@@ -19,29 +19,47 @@ And that's it!
 
 ## How do I start using it?
 
-To get the link to redirect the user and obtain the needed info to start using ML API,
-you need first to generate the URL for user authentication and authorization.
+You can start integrating with api.mercadolibre by doing the following:
 
-After calling this URL, you will be able to obtain the CLIENT_CODE for later being used while client creation.
+```go
+client, err := sdk.Meli(CLIENT_ID, USER_CODE, CLIENT_SECRET, REDIRECT_URL)
+```
+**CLIENT_ID:** is the id that was given to you when you registered your application by using *Application Manager*
+Go to "http://developers.mercadolibre.com/register-your-application/" for help
+
+**CLIENT_SECRET:** is a secret which is created during the complition of the step above.
+
+**USER_CODE:** is a code which is asigned to a specific user when this one tryies to access a private mercadolibre API. It means, that
+to get this code, you will need to authenticate and authorize the user.
+
+**REDIRECTA_URL:** This is the url where the user will be redirected once it is authorized by mercadolibre.
+
+To obtain the **USER_CODE** named above, you will have to redirect the user to a specific url. To build this url, you can use
+the following code:
+
 ```go
 url := sdk.GetAuthURL(CLIENT_ID, sdk.MLA, "https://www.example.com")
 ```
 
-Now you can instantiate a ```Meli``` object. You'll need to pass a ```clientId```, ```clientCode``` and a ```clientSecret```.
-You can obtain both after creating your own application. For more information on this please read: [creating an application](http://developers.mercadolibre.com/application-manager/)
+As a result, you will need to somehow make the user to enter his/her credentials in that URL. Once mercadolibre api authenticates
+the user, a redirection url will be returned and the **USER_CODE** will come attached to it.
+ "(i.e https://www.example.com?code=TG-57f2b6c7e4b08aea0070353e-214509008)"
 
-```go
-client, err := sdk.Meli(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com")
-```
-With this instance you can start interacting with MercadoLibre's APIs.
+**Warning**: This **USER_CODE** needs to be parsed and kept by your application in order to be used for later instantiate the Meli client.
+
+Now you can instantiate another ```Meli``` object, but this time ** this object will allow you to access the private API and also will manage the
+ token refreshing, so you do not need to worrie about this handshake**
+
 
 There are some design considerations worth to mention.
 This SDK is just a thin layer on top of an http client to handle all the OAuth WebServer flow for you.
 
 
-## Making GET calls
+## Making GET calls to public API
 
 ```go
+//USER_CODE can be empty since neither authorization nor authentication is needed.
+client, err := sdk.Meli(CLIENT_ID, USER_CODE, CLIENT_SECRET, "www.example.com")
 resp, err := client.Get("/users/me")
 
 if err != nil {
@@ -51,6 +69,42 @@ userInfo, _:= ioutil.ReadAll(resp.Body)
 fmt.Printf("response:%s\n", userInfo)
 
 ```
+
+
+## Making GET calls to a private API
+```go
+var client *sdk.Meli
+
+if  client, err := sdk.Meli(CLIENT_ID, "", CLIENT_SECRET, redirectURL); err != nil {
+    log.Printf("Error: ", err.Error())
+    return
+}
+
+var response *http.Response
+if response, err = client.Get("/users/me"); err != nil {
+    log.Printf("Error: ", err.Error())
+    return
+}
+
+/*
+ IF the API requires authorization you need to redirect the user.
+ Once the user enters his/her credentials, you need to use the **USER_CODE** to instantiate a new client, but this
+ time, it will be able to query private APIs.
+*/
+if response.StatusCode == http.StatusForbidden {
+
+    url := sdk.GetAuthURL(CLIENT_ID, sdk.MLA, "www.example.com")
+    log.Printf("Returning Authentication URL:%s\n", url)
+    http.Redirect(w, r, url, 301)
+}
+
+/***** ONCE THE USER WAS REDIRECTED AND A USER_CODE WAS PROVIDED, THEN AGAIN..**+***/
+if  client, err := sdk.Meli(CLIENT_ID, CODE_JUST_OBTEINED, CLIENT_SECRET, redirectURL); err != nil {
+    log.Printf("Error: ", err.Error())
+    return
+}
+```
+
 
 ## Making POST calls
 
