@@ -1,4 +1,4 @@
-# MercadoLibre's Golang SDK [DRAFT - WORK IN PROGRESS]
+# MercadoLibre's Golang SDK
 
 This is the official GO SDK for MercadoLibre's Platform.
 
@@ -27,11 +27,11 @@ After calling this URL, you will be able to obtain the CLIENT_CODE for later bei
 url := sdk.GetAuthURL(CLIENT_ID, sdk.MLA, "https://www.example.com")
 ```
 
-Now you can instantiate a ```Client``` object. You'll need to pass a ```clientId```, ```clientCode``` and a ```clientSecret```.
+Now you can instantiate a ```Meli``` object. You'll need to pass a ```clientId```, ```clientCode``` and a ```clientSecret```.
 You can obtain both after creating your own application. For more information on this please read: [creating an application](http://developers.mercadolibre.com/application-manager/)
 
 ```go
-client, err := sdk.NewClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com")
+client, err := sdk.Meli(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com")
 ```
 With this instance you can start interacting with MercadoLibre's APIs.
 
@@ -55,7 +55,7 @@ fmt.Printf("response:%s\n", userInfo)
 ## Making POST calls
 
 ```go
-client, err := sdk.NewClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com")
+client, err := sdk.Meli(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com")
 
 body :=	"{\"title\":\"Item de test - No Ofertar\",\"category_id\":\"MLA1912\",\"price\":10,\"currency_id\":\"ARS\",\"available_quantity\":1,\"buying_mode\":\"buy_it_now\",\"listing_type_id\":\"bronze\",\"condition\":\"new\",\"description\": \"Item:,  Ray-Ban WAYFARER Gloss Black RB2140 901  Model: RB2140. Size: 50mm. Name: WAYFARER. Color: Gloss Black. Includes Ray-Ban Carrying Case and Cleaning Cloth. New in Box\",\"video_id\": \"YOUTUBE_ID_HERE\",\"warranty\": \"12 months by Ray Ban\",\"pictures\":[{\"source\":\"http://upload.wikimedia.org/wikipedia/commons/f/fd/Ray_Ban_Original_Wayfarer.jpg\"},{\"source\":\"http://en.wikipedia.org/wiki/File:Teashades.gif\"}]}"
 
@@ -71,7 +71,7 @@ fmt.Printf("response:%s\n", userInfo)
 ## Making PUT calls
 
 ```go
-client, err := sdk.NewClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com")
+client, err := sdk.Meli(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com")
 change := "{\"available_quantity\": 6}"
 
 resp, err = client.Put("/items/" + item.Id, &change)
@@ -85,8 +85,7 @@ fmt.Printf("response:%s\n", userInfo)
 ## Making DELETE calls
 
 ```go
-client, err := sdk.NewClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com")
-client := sdk.NewClient(123456,"client secret")
+client, err := sdk.Meli(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com")
 client.Delete("/items/123")
 ```
 

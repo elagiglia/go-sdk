@@ -459,14 +459,14 @@ func (httpClient MeliHttpClient) executeHttpRequest(method string, url string, b
     req, err := http.NewRequest(method, url, body)
 
     if err != nil {
-        dbg.Printf("Error when creating %s request %d.", http.MethodDelete, err)
+        dbg.Printf("Error when creating %s request %s.", http.MethodDelete, err.Error())
         return nil, err
     }
 
     resp, err := http.DefaultClient.Do(req)
 
     if err != nil {
-        dbg.Printf("Error while calling url: %s\n Error: %s", url, err)
+        dbg.Printf("Error while calling url: %s\n Error: %s", url, err.Error())
         return nil, err
     }
 

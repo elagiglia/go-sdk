@@ -104,7 +104,7 @@ func Test_POST_a_new_item_works_properly_when_token_IS_EXPIRED(t *testing.T){
     }
 
     if resp.StatusCode != http.StatusCreated {
-        log.Printf("Error while posting a new item status code: %s\n", resp.StatusCode)
+        log.Printf("Error while posting a new item status code: %d\n", resp.StatusCode)
         t.FailNow()
     }
 }
@@ -122,7 +122,7 @@ func Test_POST_a_new_item_works_properly_when_token_IS_NOT_EXPIRED (t *testing.T
     }
 
     if resp.StatusCode != http.StatusCreated {
-        log.Printf("Error while posting a new item status code: %s\n", resp.StatusCode)
+        log.Printf("Error while posting a new item status code: %d\n", resp.StatusCode)
         t.FailNow()
     }
 }
@@ -140,7 +140,7 @@ func Test_PUT_a_new_item_works_properly_when_token_IS_NOT_EXPIRED (t *testing.T)
     }
 
     if resp.StatusCode != http.StatusOK {
-        log.Printf("Error while putting a new item. Status code: %s\n", resp.StatusCode)
+        log.Printf("Error while putting a new item. Status code: %d\n", resp.StatusCode)
         t.FailNow()
     }
 }
@@ -158,7 +158,7 @@ func Test_PUT_a_new_item_works_properly_when_token_IS_EXPIRED (t *testing.T){
     }
 
     if resp.StatusCode != http.StatusOK {
-        log.Printf("Error while putting a new item. Status code: %s\n", resp.StatusCode)
+        log.Printf("Error while putting a new item. Status code: %d\n", resp.StatusCode)
         t.FailNow()
     }
 }
@@ -175,7 +175,7 @@ func Test_DELETE_an_item_returns_200_when_token_IS_NOT_EXPIRED (t *testing.T){
     }
 
     if resp.StatusCode != http.StatusOK {
-        log.Printf("Error while putting a new item. Status code: %s\n", resp.StatusCode)
+        log.Printf("Error while putting a new item. Status code: %d\n", resp.StatusCode)
         t.FailNow()
     }
 }
@@ -191,7 +191,7 @@ func Test_DELETE_an_item_returns_200_when_token_IS_EXPIRED (t *testing.T){
         t.FailNow()
     }
     if resp.StatusCode != http.StatusOK {
-        log.Printf("Error while putting a new item. Status code: %s\n", resp.StatusCode)
+        log.Printf("Error while putting a new item. Status code: %d\n", resp.StatusCode)
         t.FailNow()
     }
 }
