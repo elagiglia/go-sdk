@@ -8,7 +8,6 @@ deploy:
 
 test:
 	${MAKE} utest
-	${MAKE} kill
 
 
 .PHONY: test utest deploy
