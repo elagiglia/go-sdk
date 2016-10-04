@@ -14,10 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package sdk
 
 import (
-    "github.com/mercadolibre/sdk"
+    "github.com/mercadolibre/go-sdk/sdk"
     "github.com/gorilla/mux"
     "fmt"
     "log"
