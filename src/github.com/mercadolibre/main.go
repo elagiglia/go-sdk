@@ -38,48 +38,13 @@ var userCode map[string] string
 var userCodeMutex sync.Mutex
 
 func main() {
-
-
     userCode = make(map[string] string)
-
     log.Fatal(http.ListenAndServe(":8080", getRouter()))
-
-     /* Example 4)
-      This example shows you how to PUT a change in an Item.*/
-
-
-    /*change := "{\"available_quantity\": 6}"
-
-    resp, err = client.Put("/items/" + item.Id, &change)
-
-    if err != nil {
-        log.Printf("Error %s\n", err.Error())
-    }
-    userInfo, _ = ioutil.ReadAll(resp.Body)
-    resp.Body.Close()
-
-    fmt.Printf("Example 4) \n\t Response of PUT /items : %s\n", userInfo)
-
-
-   *//*  Example 5)
-     This example shows you how to DELETE an Item.*//*
-
-
-    resp, err = client.Delete("/items/" + item.Id)
-
-    if err != nil {
-        log.Printf("Error %s\n", err.Error())
-    }
-    userInfo, _= ioutil.ReadAll(resp.Body)
-    resp.Body.Close()
-
-    fmt.Printf("Example 5 \n\t Response of DELETE /items : %s\n", userInfo)*/
 }
 
 type item struct {
     Id string
 }
-
 
 
 type Route struct {
