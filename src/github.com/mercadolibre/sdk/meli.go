@@ -42,6 +42,7 @@ import (
     "errors"
     "time"
     "sync"
+    "fmt"
 )
 
 const (
@@ -61,14 +62,10 @@ const (
     MRD = "https://auth.mercadolibre.com.do" // Dominicana
 
     AUTHORIZATION_CODE = "authorization_code"
-    REFRESH_TOKEN = "refresh_token"
     API_URL = "https://api.mercadolibre.com"
 )
 
-type refreshToken func (*Client) error
-
-var refreshTok refreshToken
-var publicClient = &Client{apiUrl:API_URL, auth:ANONYMOUS, httpClient:MeliHttpClient{}}
+var publicClient = &Client{apiUrl:API_URL, auth:ANONYMOUS, httpClient:MeliHttpClient{}, tokenRefresher:MeliTokenRefresher{}}
 var clientByUser map[string] *Client
 var clientByUserMutex sync.Mutex
 var ANONYMOUS = Authorization{}
@@ -79,19 +76,7 @@ var dbg bool
 func init() {
     log.SetFlags(log.LstdFlags | log.Lshortfile)
     clientByUser = make(map[string] *Client)
-    refreshTok = hookRefreshToken
-    dbg = true
-}
-
-
-type Client struct {
-    apiUrl      string
-    id          int64
-    secret      string
-    code        string
-    redirectUrl string
-    auth        Authorization
-    httpClient  HttpClient
+    dbg = true  //Set this true if you want to see debug messages
 }
 
 /*
@@ -108,34 +93,53 @@ func GetAuthURL(clientId int64, base_site, callback string) string {
 }
 
 /*
-This method returns a Client which can be used to call mercadolibre API
-client id, code and secret are generated when creating your application
+This function returns a Client which can be used to call mercadolibre API
+client id, code and secret are generated when registering your application by using Application Manager
+
+Please, visit the following link for further information: http://developers.mercadolibre.com/application-manager/
 
 If userCode is empty, a client will be returned, but this one is only able to query
 the public mercadolibre API.
 
-If userCode has a value, then an authenticated client will be returned. This one is able to query either public and private
+If userCode has a value, then a full authenticated client will be returned. This one is able to query either public and private
 mercadolibre API.
 */
-func Meli(id int64, userCode string, secret string, redirectUrl string) (*Client, error) {
+func Meli(id int64, userCode string, secret string, callBackUrl string) (*Client, error) {
 
+    /*
+    If userCode is not provided, then a generic client is returned.
+    This client can be used only to access public API
+     */
     if strings.Compare(userCode, "") == 0 {
         return publicClient, nil
     }
 
+    /*
+    If we are here, userCode was provided, so a full client is going to be set up, to allow full access to either private
+    and public API
+     */
     clientByUserMutex.Lock()
     defer clientByUserMutex.Unlock()
 
+    //The same client is going to be returned if the same applicationId and userCode is provided.
     key := strconv.FormatInt(id, 10) + userCode
 
     var client *Client
-
     client = clientByUser[key]
 
     if client == nil {
 
-        client = &Client{id:id, code:userCode, secret:secret, redirectUrl:redirectUrl, apiUrl:API_URL, httpClient:MeliHttpClient{}}
-        log.Printf("Building a client: %p for clientid:%d code:%s\n", client, id, userCode)
+        client = &Client{
+            id:id,
+            code:userCode,
+            secret:secret,
+            redirectUrl:callBackUrl,
+            apiUrl:API_URL,
+            httpClient:MeliHttpClient{},
+            tokenRefresher:MeliTokenRefresher{},
+        }
+
+        if dbg {log.Printf("Building a client: %p for clientid:%d code:%s\n", client, id, userCode)}
 
         auth, err := client.authorize()
 
@@ -152,6 +156,79 @@ func Meli(id int64, userCode string, secret string, redirectUrl string) (*Client
     return client, nil
 }
 
+/**
+HTTP Methods
+Given that error handling for all the HTTP Methods is pretty the same, then an interface Callback is define, which is
+going to be called by the handler to execute the different HTTP Methods, then check the response and handle the error
+ */
+type Callback interface {
+    Call(apiUrl string) (*http.Response, error)
+}
+
+func httpErrorHandler(client *Client, resource string, httpMethod Callback) (*http.Response, error){
+
+    var apiUrl *AuthorizationURL
+    var err error
+
+    if apiUrl, err = client.getAuthorizedURL(resource); err != nil {
+        if dbg { log.Printf("Error %s", err) }
+        return nil, err
+    }
+
+    var resp *http.Response
+    if resp, err = httpMethod.Call(apiUrl.string()); err != nil {
+        log.Printf("Error while calling url: %s \n Error: %s", apiUrl.string(), err)
+        return nil, err
+    }
+
+    return resp, nil
+}
+/*
+HTTP Methods to be called by httpErrorHandler
+ */
+type HttpGet struct{
+    httpClient HttpClient
+}
+
+func (callback HttpGet) Call(url string) (*http.Response, error){
+    return callback.httpClient.Get(url)
+}
+
+type HttpPost struct{
+    httpClient HttpClient
+    body string
+}
+func (callback HttpPost) Call(url string) (*http.Response, error){
+    return callback.httpClient.Post(url, "application/json", bytes.NewReader([]byte(callback.body)))
+}
+
+type HttpPut struct{
+    httpClient HttpClient
+    body string
+}
+func (callback HttpPut) Call(url string) (*http.Response, error){
+    return callback.httpClient.Put(url, strings.NewReader(callback.body))
+}
+
+type HttpDelete struct{
+    httpClient HttpClient
+}
+func (callback HttpDelete) Call(url string) (*http.Response, error){
+    return callback.httpClient.Delete(url, nil)
+}
+
+type Client struct {
+    apiUrl      string
+    id          int64
+    secret      string
+    code        string
+    redirectUrl string
+    auth        Authorization
+    httpClient  HttpClient
+    tokenRefresher TokenRefresher
+}
+
+
 /*
 This method returns an Authorization object which contains the needed tokens
 to interact with ML API
@@ -165,19 +242,19 @@ func (client *Client) authorize() (*Authorization, error) {
     authURL.addCode(client.code)
     authURL.addRedirectUri(client.redirectUrl)
 
-    resp, err := client.httpClient.Post(authURL.string(), "application/json", *(new(io.Reader)))
-
-    if err != nil {
+    var resp *http.Response
+    var err error
+    if resp, err = client.httpClient.Post(authURL.string(), "application/json", *(new(io.Reader))); err != nil {
         log.Printf("Error when posting: %s", err)
         return nil, err
     }
 
-    if resp.StatusCode != http.StatusOK {
-        return nil, errors.New("There was an error while authorizing. Check wether your code has not expired.")
-    }
-
     body, err := ioutil.ReadAll(resp.Body)
     resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        return nil, errors.New(fmt.Sprintf("Ups, there was an error: %s", body))
+    }
 
     authorization := new(Authorization)
     if err := json.Unmarshal(body, authorization); err != nil {
@@ -189,119 +266,26 @@ func (client *Client) authorize() (*Authorization, error) {
     return authorization, nil
 }
 
-
-/**
-HTTP Methods
- */
 func (client *Client) Get(resourcePath string) (*http.Response, error) {
 
-    var apiUrl *AuthorizationURL
-    var err error
-
-    if apiUrl, err = client.getAuthorizedURL(resourcePath); err != nil {
-        if dbg { log.Printf("Error %s", err) }
-        return nil, err
-    }
-
-    var resp *http.Response
-    if resp, err = client.httpClient.Get(apiUrl.string()); err != nil {
-        log.Printf("Error while calling url: %s \n Error: %s", apiUrl.string(), err)
-        return nil, err
-    }
-
-    return resp, err
+    return httpErrorHandler(client, resourcePath, HttpGet{httpClient:client.httpClient})
 }
 
 func (client *Client) Post(resourcePath string, body string) (*http.Response, error){
 
-    var apiUrl *AuthorizationURL
-    var err error
-
-    if apiUrl, err = client.getAuthorizedURL(resourcePath); err != nil {
-        if dbg { log.Printf("Error %s", err) }
-        return nil, err
-    }
-
-    var resp *http.Response
-    if resp, err = client.httpClient.Post(apiUrl.string(), "application/json", bytes.NewReader([]byte(body))); err != nil {
-        log.Printf("Error while calling url: %s \n Error: %s", apiUrl.string(), err)
-        return nil, err
-    }
-
-    return resp, nil
+    return httpErrorHandler(client, resourcePath, HttpPost{httpClient:client.httpClient, body:body})
 }
 
-func (client *Client) Put(resourcePath string, body *string) (*http.Response, error){
+func (client *Client) Put(resourcePath string, body string) (*http.Response, error){
 
-    var apiUrl *AuthorizationURL
-    var err error
-
-    if apiUrl, err = client.getAuthorizedURL(resourcePath); err != nil {
-        if dbg { log.Printf("Error %s", err) }
-        return nil, err
-    }
-
-    var resp *http.Response
-    if resp, err = client.httpClient.Put(apiUrl.string(), strings.NewReader(*body)); err != nil {
-        log.Printf("Error while calling url: %s \n Error: %s", apiUrl.string(), err)
-        return nil, err
-    }
-
-
-    return resp, err
+    return httpErrorHandler(client, resourcePath, HttpPut{httpClient:client.httpClient, body:body})
 }
 
 func (client *Client) Delete(resourcePath string ) (*http.Response, error) {
 
-    var apiUrl *AuthorizationURL
-    var err error
-    if apiUrl, err = client.getAuthorizedURL(resourcePath); err != nil {
-        if dbg { log.Printf("Error: %s", err) }
-        return nil, err
-    }
-
-    var resp *http.Response
-    if resp, err = client.httpClient.Delete(apiUrl.string(), nil); err != nil {
-        log.Printf("Error while calling url: %s \n Error: %s", apiUrl.string(), err)
-        return nil, err
-    }
-
-    return resp, nil
+    return httpErrorHandler(client, resourcePath, HttpDelete{httpClient:client.httpClient})
 }
 
-//This method has side effects. Alters the token that is within the client.
-func hookRefreshToken(client *Client) error {
-
-    authorizationURL := newAuthorizationURL(client.apiUrl + "/oauth/token")
-    authorizationURL.addGrantType(REFRESH_TOKEN)
-    authorizationURL.addClientId(client.id)
-    authorizationURL.addClientSecret(client.secret)
-    authorizationURL.addRefreshToken(client.auth.RefreshToken)
-
-    var resp *http.Response
-    var err error
-    if resp, err = client.httpClient.Post(authorizationURL.string(), "application/json", *(new(io.Reader))); err != nil {
-        if dbg {log.Printf("Error: %s\n", err.Error())}
-        return err
-    }
-
-    if resp.StatusCode != http.StatusOK {
-        return errors.New("Refreshing token returned status code " + resp.Status)
-    }
-
-    body, err := ioutil.ReadAll(resp.Body)
-    resp.Body.Close()
-
-    if err := json.Unmarshal(body, &(client.auth)); err != nil {
-        log.Printf("Error while receiving the authorization %s %s", err.Error(), body)
-        return err
-    }
-
-    client.auth.ReceivedAt = time.Now().Unix()
-
-    log.Printf("auth received at: %d expires in:%d\n", client.auth.ReceivedAt, client.auth.ExpiresIn)
-    return nil
-}
 /*
 This method returns the URL + Token to be used by each HTTP request.
 If Token needs to be refreshed, then this method will send a POST to ML API to refresh it.
@@ -316,11 +300,13 @@ func (client *Client) getAuthorizedURL(resourcePath string) (*AuthorizationURL, 
         authMutex.Lock()
 
        if client.auth.isExpired() {
-            log.Printf("token has expired....refreshing...\n")
-            err := refreshTok(client)
+
+           if dbg {log.Printf("Token has expired....Refreshing it...\n")}
+
+           err := client.tokenRefresher.RefreshToken(client)
 
             if err != nil {
-                log.Printf("Error while refreshing token %s\n", err.Error())
+                if dbg {log.Printf("Error while refreshing token %s\n", err.Error())}
                 return nil, err
             }
        }
@@ -332,6 +318,7 @@ func (client *Client) getAuthorizedURL(resourcePath string) (*AuthorizationURL, 
     return finalUrl, err
 }
 
+
 type Authorization struct {
     AccessToken  string  `json:"access_token"`
     TokenType    string  `json:"token_type"`
@@ -342,7 +329,7 @@ type Authorization struct {
 }
 
 func (auth Authorization) isExpired() bool {
-    log.Printf("received at:%d expires in: %d\n", auth.ReceivedAt, auth.ExpiresIn)
+    if dbg {log.Printf("received at:%d expires in: %d\n", auth.ReceivedAt, auth.ExpiresIn)}
     return ((auth.ReceivedAt + int64(auth.ExpiresIn)) <= (time.Now().Unix() + 60))
 }
 
@@ -419,28 +406,12 @@ type MeliHttpClient struct {
 }
 
 func (httpClient MeliHttpClient) Get(url string) (*http.Response, error){
-
-    resp, err := http.Get(url)
-
-    if err != nil {
-        log.Printf("Error while calling url: %s \n Error: %s", url, err)
-        return nil, err
-    }
-
-    return resp, nil
+    return http.Get(url)
 }
-
 
 func (httpClient MeliHttpClient) Post(url string, bodyType string, body io.Reader) (*http.Response, error) {
 
-    resp, err := http.Post(url, bodyType, body)
-
-    if err != nil {
-        log.Printf("Error while calling url: %s \n Error: %s", url, err)
-        return nil, err
-    }
-
-    return resp, nil
+    return http.Post(url, bodyType, body)
 }
 
 func (httpClient MeliHttpClient) Put(url string, body io.Reader) (*http.Response, error){
@@ -459,7 +430,7 @@ func (httpClient MeliHttpClient) executeHttpRequest(method string, url string, b
     req, err := http.NewRequest(method, url, body)
 
     if err != nil {
-        log.Printf("Error when creating %s request %s.", http.MethodDelete, err.Error())
+        log.Printf("Error when creating %s request %s.", method, err.Error())
         return nil, err
     }
 
@@ -471,4 +442,55 @@ func (httpClient MeliHttpClient) executeHttpRequest(method string, url string, b
     }
 
     return resp, nil
+}
+
+
+type TokenRefresher interface {
+     RefreshToken(*Client) error
+}
+
+type MeliTokenRefresher struct {
+
+}
+
+/*
+This method has side effects. Alters the token that is within the client.
+Every time this method is called, then locking has to be used to avoid different
+methods to modify the client
+ */
+func (refresher MeliTokenRefresher) RefreshToken(client *Client) error {
+
+    const REFRESH_TOKEN = "refresh_token"
+
+    authorizationURL := newAuthorizationURL(client.apiUrl + "/oauth/token")
+    authorizationURL.addGrantType(REFRESH_TOKEN)
+    authorizationURL.addClientId(client.id)
+    authorizationURL.addClientSecret(client.secret)
+    authorizationURL.addRefreshToken(client.auth.RefreshToken)
+
+    var resp *http.Response
+    var err error
+
+    if resp, err = client.httpClient.Post(authorizationURL.string(), "application/json", *(new(io.Reader))); err != nil {
+    //if resp, err = client.Post(authorizationURL.string(), ""); err != nil {
+        if dbg {log.Printf("Error: %s\n", err.Error())}
+        return err
+    }
+
+    if resp.StatusCode != http.StatusOK {
+        return errors.New("Refreshing token returned status code " + resp.Status)
+    }
+
+    body, err := ioutil.ReadAll(resp.Body)
+    resp.Body.Close()
+
+    if err := json.Unmarshal(body, &(client.auth)); err != nil {
+        if dbg {log.Printf("Error while receiving the authorization %s %s", err.Error(), body)}
+        return err
+    }
+
+    client.auth.ReceivedAt = time.Now().Unix()
+
+    if dbg {log.Printf("auth received at: %d expires in:%d\n", client.auth.ReceivedAt, client.auth.ExpiresIn)}
+    return nil
 }

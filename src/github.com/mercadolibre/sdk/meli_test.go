@@ -132,7 +132,7 @@ func Test_PUT_a_new_item_works_properly_when_token_IS_NOT_EXPIRED (t *testing.T)
     client, err := newTestClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
 
     body := "{\"foo\":\"bar\"}"
-    resp, err := client.Put("/items/123", &body)
+    resp, err := client.Put("/items/123", body)
 
     if err != nil {
         log.Printf("Error while posting a new item %s\n", err)
@@ -150,7 +150,7 @@ func Test_PUT_a_new_item_works_properly_when_token_IS_EXPIRED (t *testing.T){
     client, err := newTestClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
 
     body := "{\"foo\":\"bar\"}"
-    resp, err := client.Put("/items/123", &body)
+    resp, err := client.Put("/items/123", body)
 
     if err != nil {
         log.Printf("Error while posting a new item %s\n", err)
@@ -232,7 +232,6 @@ func Test_only_one_token_refresh_call_is_done_when_several_threads_are_executed(
         t.FailNow()
     }
     client.auth.ExpiresIn = 0
-    refreshTok = hookForTesting
 
     wg.Add(100)
     for i := 0; i< 100 ; i++ {
@@ -248,14 +247,19 @@ func Test_only_one_token_refresh_call_is_done_when_several_threads_are_executed(
 var counter = 0;
 var m = sync.Mutex{}
 
-func hookForTesting(client *Client) error {
-    hookRefreshToken(client)
+
+type MockTockenRefresher struct {}
+
+func (mock MockTockenRefresher) RefreshToken (client *Client) error{
+    realRefresher := MeliTokenRefresher{}
+    realRefresher.RefreshToken(client)
     m.Lock()
     counter++
     fmt.Printf("counter %d", counter)
     m.Unlock()
     return nil
 }
+
 var wg sync.WaitGroup
 
 func callHttpMethod(client *Client){
@@ -275,7 +279,7 @@ func newTestAnonymousClient(apiUrl string) (*Client, error) {
 
 func newTestClient(id int64, code string, secret string, redirectUrl string, apiUrl string) (*Client, error){
 
-    client := &Client{id:id, code:code, secret:secret, redirectUrl:redirectUrl, apiUrl:apiUrl, httpClient:MockHttpClient{}}
+    client := &Client{id:id, code:code, secret:secret, redirectUrl:redirectUrl, apiUrl:apiUrl, httpClient:MockHttpClient{}, tokenRefresher:MockTockenRefresher{}}
 
     auth, err := client.authorize()
 

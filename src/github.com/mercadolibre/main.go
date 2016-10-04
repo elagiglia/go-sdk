@@ -290,7 +290,9 @@ func addresses(w http.ResponseWriter, r *http.Request) {
     */
     if response.StatusCode == http.StatusForbidden {
         url := sdk.GetAuthURL(CLIENT_ID, sdk.MLA, redirectURL)
+        body, _ := ioutil.ReadAll(response.Body)
         log.Printf("Returning Authentication URL:%s\n", url)
+        log.Printf("Error:%s", body)
         http.Redirect(w, r, url, 301)
     }
 
@@ -336,7 +338,7 @@ func printOutput(w http.ResponseWriter, response *http.Response){
 
 func returnLinks(w http.ResponseWriter, r *http.Request) {
 
-    userId := "/214509008"  //id from test user
+    userId := "/214509008"  //WARNING: REPLACE BY YOUR USER ID
     href := "href=" + HOST  + userId
 
     var links bytes.Buffer
