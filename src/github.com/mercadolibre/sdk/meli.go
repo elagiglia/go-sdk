@@ -170,7 +170,7 @@ func httpErrorHandler(client *Client, resource string, httpMethod Callback) (*ht
     var apiUrl *AuthorizationURL
     var err error
 
-    if apiUrl, err = client.getAuthorizedURL(resource); err != nil {
+    if apiUrl, err = getAuthorizedURL(client, resource); err != nil {
         if dbg { log.Printf("Error %s", err) }
         return nil, err
     }
@@ -266,6 +266,10 @@ func (client *Client) authorize() (*Authorization, error) {
     return authorization, nil
 }
 
+func (client *Client) refreshToken() error{
+    return client.tokenRefresher.RefreshToken(client)
+}
+
 func (client *Client) Get(resourcePath string) (*http.Response, error) {
 
     return httpErrorHandler(client, resourcePath, HttpGet{httpClient:client.httpClient})
@@ -290,7 +294,7 @@ func (client *Client) Delete(resourcePath string ) (*http.Response, error) {
 This method returns the URL + Token to be used by each HTTP request.
 If Token needs to be refreshed, then this method will send a POST to ML API to refresh it.
  */
-func (client *Client) getAuthorizedURL(resourcePath string) (*AuthorizationURL, error){
+func getAuthorizedURL(client *Client, resourcePath string) (*AuthorizationURL, error){
 
     finalUrl := newAuthorizationURL(client.apiUrl + resourcePath)
     var err error
@@ -303,7 +307,7 @@ func (client *Client) getAuthorizedURL(resourcePath string) (*AuthorizationURL, 
 
            if dbg {log.Printf("Token has expired....Refreshing it...\n")}
 
-           err := client.tokenRefresher.RefreshToken(client)
+           err := client.refreshToken()
 
             if err != nil {
                 if dbg {log.Printf("Error while refreshing token %s\n", err.Error())}
