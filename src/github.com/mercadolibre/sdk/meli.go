@@ -52,13 +52,13 @@ const (
     MCO = "https://auth.mercadolibre.com.co" // Colombia
     MCR = "https://auth.mercadolibre.com.cr" // Costa Rica
     MEC = "https://auth.mercadolibre.com.ec" // Ecuador
-    MLC = "https://auth.mercadolibre.cl"      // Chile
+    MLC = "https://auth.mercadolibre.cl"     // Chile
     MLM = "https://auth.mercadolibre.com.mx" // Mexico
     MLU = "https://auth.mercadolibre.com.uy" // Uruguay
     MLV = "https://auth.mercadolibre.com.ve" // Venezuela
     MPA = "https://auth.mercadolibre.com.pa" // Panama
     MPE = "https://auth.mercadolibre.com.pe" // Peru
-    MPT = "https://auth.mercadolivre.pt"      // Portugal
+    MPT = "https://auth.mercadolivre.pt"     // Portugal
     MRD = "https://auth.mercadolibre.com.do" // Dominicana
 
     AUTHORIZATION_CODE = "authorization_code"
@@ -76,7 +76,7 @@ var dbg bool
 func init() {
     log.SetFlags(log.LstdFlags | log.Lshortfile)
     clientByUser = make(map[string] *Client)
-    dbg = true  //Set this true if you want to see debug messages
+    dbg = false  //Set this true if you want to see debug messages
 }
 
 /*
@@ -106,18 +106,16 @@ mercadolibre API.
 */
 func Meli(id int64, userCode string, secret string, callBackUrl string) (*Client, error) {
 
-    /*
-    If userCode is not provided, then a generic client is returned.
-    This client can be used only to access public API
-     */
+
+    //If userCode is not provided, then a generic client is returned.
+    //This client can be used only to access public API
     if strings.Compare(userCode, "") == 0 {
         return publicClient, nil
     }
 
-    /*
-    If we are here, userCode was provided, so a full client is going to be set up, to allow full access to either private
-    and public API
-     */
+
+    //If we are here, userCode was provided, so a full client is going to be set up, to allow full access to either private
+    //and public API
     clientByUserMutex.Lock()
     defer clientByUserMutex.Unlock()
 
