@@ -47,19 +47,19 @@ import (
 
 const (
 
-    MLA = "https://auth.mercadolibre.com.ar" // Argentina
-    MLB = "https://auth.mercadolivre.com.br" // Brasil
-    MCO = "https://auth.mercadolibre.com.co" // Colombia
-    MCR = "https://auth.mercadolibre.com.cr" // Costa Rica
-    MEC = "https://auth.mercadolibre.com.ec" // Ecuador
-    MLC = "https://auth.mercadolibre.cl"     // Chile
-    MLM = "https://auth.mercadolibre.com.mx" // Mexico
-    MLU = "https://auth.mercadolibre.com.uy" // Uruguay
-    MLV = "https://auth.mercadolibre.com.ve" // Venezuela
-    MPA = "https://auth.mercadolibre.com.pa" // Panama
-    MPE = "https://auth.mercadolibre.com.pe" // Peru
-    MPT = "https://auth.mercadolivre.pt"     // Portugal
-    MRD = "https://auth.mercadolibre.com.do" // Dominicana
+    AUTH_URL_MLA = "https://auth.mercadolibre.com.ar" // Argentina
+    AUTH_URL_MLB = "https://auth.mercadolivre.com.br" // Brasil
+    AUTH_URL_MCO = "https://auth.mercadolibre.com.co" // Colombia
+    AUTH_URL_MCR = "https://auth.mercadolibre.com.cr" // Costa Rica
+    AUTH_URL_MEC = "https://auth.mercadolibre.com.ec" // Ecuador
+    AUTH_URL_MLC = "https://auth.mercadolibre.cl"     // Chile
+    AUTH_URL_MLM = "https://auth.mercadolibre.com.mx" // Mexico
+    AUTH_URL_MLU = "https://auth.mercadolibre.com.uy" // Uruguay
+    AUTH_URL_MLV = "https://auth.mercadolibre.com.ve" // Venezuela
+    AUTH_URL_MPA = "https://auth.mercadolibre.com.pa" // Panama
+    AUTH_URL_MPE = "https://auth.mercadolibre.com.pe" // Peru
+    AUTH_URL_MPT = "https://auth.mercadolivre.pt"     // Portugal
+    AUTH_URL_MRD = "https://auth.mercadolibre.com.do" // Dominicana
 
     AUTHORIZATION_CODE = "authorization_code"
     API_URL = "https://api.mercadolibre.com"
@@ -92,6 +92,15 @@ func GetAuthURL(clientId int64, base_site, callback string) string {
     return authURL.string()
 }
 
+type MeliConfig struct {
+    ClientId int64
+    UserCode string
+    Secret string
+    CallBackUrl string
+    HttpClient HttpClient
+    TokenRefresher TokenRefresher
+}
+
 /*
 This function returns a Client which can be used to call mercadolibre API
 client id, code and secret are generated when registering your application by using Application Manager
@@ -104,15 +113,32 @@ the public mercadolibre API.
 If userCode has a value, then a full authenticated client will be returned. This one is able to query either public and private
 mercadolibre API.
 */
-func Meli(id int64, userCode string, secret string, callBackUrl string) (*Client, error) {
+func Meli(clientId int64, userCode string, secret string, callBackUrl string) (*Client, error) {
+
+    config := MeliConfig{
+                        ClientId:clientId,
+                        UserCode:userCode,
+                        Secret:secret,
+                        CallBackUrl:callBackUrl,
+                        HttpClient:MeliHttpClient{},
+                        TokenRefresher:MeliTokenRefresher{},
+                        }
+
+    return MeliClient(config)
+}
+
+/**
+This function allows you to be more specific on the config you prefer giving to the sdk Client.
+In case you want to use your own HttpClient or your TokenRefresher policy, you can use the following.
+ */
+func MeliClient(config MeliConfig) (*Client, error) {
 
 
     //If userCode is not provided, then a generic client is returned.
     //This client can be used only to access public API
-    if strings.Compare(userCode, "") == 0 {
+    if strings.Compare(config.UserCode, "") == 0 {
         return publicClient, nil
     }
-
 
     //If we are here, userCode was provided, so a full client is going to be set up, to allow full access to either private
     //and public API
@@ -120,7 +146,7 @@ func Meli(id int64, userCode string, secret string, callBackUrl string) (*Client
     defer clientByUserMutex.Unlock()
 
     //The same client is going to be returned if the same applicationId and userCode is provided.
-    key := strconv.FormatInt(id, 10) + userCode
+    key := strconv.FormatInt(config.ClientId, 10) + config.UserCode
 
     var client *Client
     client = clientByUser[key]
@@ -128,16 +154,16 @@ func Meli(id int64, userCode string, secret string, callBackUrl string) (*Client
     if client == nil {
 
         client = &Client{
-            id:id,
-            code:userCode,
-            secret:secret,
-            redirectUrl:callBackUrl,
-            apiUrl:API_URL,
-            httpClient:MeliHttpClient{},
-            tokenRefresher:MeliTokenRefresher{},
+            id: config.ClientId,
+            code: config.UserCode,
+            secret: config.Secret,
+            redirectUrl: config.CallBackUrl,
+            apiUrl: API_URL,
+            httpClient: config.HttpClient,
+            tokenRefresher: config.TokenRefresher,
         }
 
-        if dbg {log.Printf("Building a client: %p for clientid:%d code:%s\n", client, id, userCode)}
+        if dbg {log.Printf("Building a client: %p for clientid:%d code:%s\n", client, config.ClientId, config.UserCode)}
 
         auth, err := client.authorize()
 
@@ -150,9 +176,9 @@ func Meli(id int64, userCode string, secret string, callBackUrl string) (*Client
         client.auth = *auth
     }
 
-
     return client, nil
 }
+
 
 /**
 HTTP Methods
@@ -395,7 +421,9 @@ func newAuthorizationURL(baseURL string) *AuthorizationURL{
     authURL.url.WriteString(baseURL)
     return authURL
 }
-
+/**
+This interface allows you to change or mock the way Meli client make HTTP Requests.
+ */
 type HttpClient interface {
     Get(url string) (*http.Response, error)
     Post(url string, bodyType string, body io.Reader) (*http.Response, error)
@@ -446,7 +474,10 @@ func (httpClient MeliHttpClient) executeHttpRequest(method string, url string, b
     return resp, nil
 }
 
-
+/**
+This interface allows you to extend the mechanism Meli client has, to change the way authentication/authorization tokens
+ are negotiated.
+ */
 type TokenRefresher interface {
      RefreshToken(*Client) error
 }

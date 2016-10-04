@@ -33,19 +33,52 @@ const (
     API_TEST = "http://localhost:3000"
     CLIENT_ID = 123456
     CLIENT_SECRET = "client secret"
-    CLIENT_CODE = "valid code with refresh token"
+    USER_CODE = "valid code with refresh token"
 )
 
-func Test_URL_for_authentication_is_properly_return(t *testing.T) {
+func Test_URL_for_authentication_is_properly_returned(t *testing.T) {
 
     expectedUrl := "https://auth.mercadolibre.com.ar/authorization?response_type=code&client_id=123456&redirect_uri=http%3A%2F%2Fsomeurl.com"
 
-    url := GetAuthURL(CLIENT_ID, MLA, "http://someurl.com")
+    url := GetAuthURL(CLIENT_ID, AUTH_URL_MLA, "http://someurl.com")
 
     if url != expectedUrl {
         log.Printf("Error: The URL is different from the one that was expected.")
         log.Printf("expected %s", expectedUrl)
         log.Printf("obtained %s", url)
+        t.FailNow()
+    }
+
+}
+
+
+func Test_Generic_Client_Is_Returned_When_No_UserCODE_is_given(t *testing.T) {
+
+    client, _ := Meli(CLIENT_ID, "", CLIENT_SECRET, "htt://www.example.com")
+
+    if client.auth != ANONYMOUS {
+        log.Printf("Error: Client is not ANONYMOUS")
+        t.FailNow()
+    }
+
+}
+
+func Test_FullAuthenticated_Client_Is_Returned_When_UserCODE_And_ClientId_is_given(t *testing.T) {
+
+    config := MeliConfig{
+
+        ClientId: CLIENT_ID,
+        UserCode: USER_CODE,
+        Secret: CLIENT_SECRET,
+        CallBackUrl: "http://www.example.com",
+        HttpClient: MockHttpClient{},
+        TokenRefresher: MockTockenRefresher{},
+    }
+
+    client, _ := MeliClient(config)
+
+    if client == nil || client.auth == ANONYMOUS {
+        log.Printf("Error: Client is not a full one")
         t.FailNow()
     }
 
@@ -81,7 +114,7 @@ func Test_GET_public_API_sites_works_properly ( t *testing.T){
 
 func Test_GET_private_API_users_works_properly (t *testing.T){
 
-    client, err := newTestClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
+    client, err := newTestClient(CLIENT_ID, USER_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
 
     _, err = client.Get("/users/me")
 
@@ -93,7 +126,7 @@ func Test_GET_private_API_users_works_properly (t *testing.T){
 
 func Test_POST_a_new_item_works_properly_when_token_IS_EXPIRED(t *testing.T){
 
-    client, err := newTestClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
+    client, err := newTestClient(CLIENT_ID, USER_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
 
     body := "{\"foo\":\"bar\"}"
     resp, err := client.Post("/items", body)
@@ -111,7 +144,7 @@ func Test_POST_a_new_item_works_properly_when_token_IS_EXPIRED(t *testing.T){
 
 func Test_POST_a_new_item_works_properly_when_token_IS_NOT_EXPIRED (t *testing.T){
 
-    client, err := newTestClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
+    client, err := newTestClient(CLIENT_ID, USER_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
 
     body := "{\"foo\":\"bar\"}"
     resp, err := client.Post("/items", body)
@@ -129,7 +162,7 @@ func Test_POST_a_new_item_works_properly_when_token_IS_NOT_EXPIRED (t *testing.T
 
 func Test_PUT_a_new_item_works_properly_when_token_IS_NOT_EXPIRED (t *testing.T){
 
-    client, err := newTestClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
+    client, err := newTestClient(CLIENT_ID, USER_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
 
     body := "{\"foo\":\"bar\"}"
     resp, err := client.Put("/items/123", body)
@@ -147,7 +180,7 @@ func Test_PUT_a_new_item_works_properly_when_token_IS_NOT_EXPIRED (t *testing.T)
 
 func Test_PUT_a_new_item_works_properly_when_token_IS_EXPIRED (t *testing.T){
 
-    client, err := newTestClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
+    client, err := newTestClient(CLIENT_ID, USER_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
 
     body := "{\"foo\":\"bar\"}"
     resp, err := client.Put("/items/123", body)
@@ -165,7 +198,7 @@ func Test_PUT_a_new_item_works_properly_when_token_IS_EXPIRED (t *testing.T){
 
 func Test_DELETE_an_item_returns_200_when_token_IS_NOT_EXPIRED (t *testing.T){
 
-    client, err := newTestClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
+    client, err := newTestClient(CLIENT_ID, USER_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
 
     resp, err := client.Delete("/items/123")
 
@@ -182,7 +215,7 @@ func Test_DELETE_an_item_returns_200_when_token_IS_NOT_EXPIRED (t *testing.T){
 
 func Test_DELETE_an_item_returns_200_when_token_IS_EXPIRED (t *testing.T){
 
-    client, err := newTestClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
+    client, err := newTestClient(CLIENT_ID, USER_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
 
     resp, err := client.Delete("/items/123")
 
@@ -225,7 +258,7 @@ func Test_AuthorizationURL_adds_a_query_param_separator_when_needed(t *testing.T
 
 func Test_only_one_token_refresh_call_is_done_when_several_threads_are_executed(t *testing.T){
 
-    client, err := newTestClient(CLIENT_ID, CLIENT_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
+    client, err := newTestClient(CLIENT_ID, USER_CODE, CLIENT_SECRET, "https://www.example.com", API_TEST)
 
     if err != nil {
         log.Printf("Error during Client instantation %s\n", err)

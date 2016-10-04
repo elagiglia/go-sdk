@@ -1,10 +1,13 @@
 utest:
-	export GOPATH=export PWD=`pwd`
+	export GOPATH=$(shell pwd)
 	go test -v src/github.com/mercadolibre/sdk/* 2>&1
 
 deploy:
-	export GOPATH=export PWD=`pwd`
-	go build -v github.com/mercadolibre/sdk/
+	export GOPATH=$(shell pwd)
+	go build -v src/github.com/mercadolibre/sdk/
+build:
+	export GOPATH=$(shell pwd)
+	go build -o main src/github.com/mercadolibre/*go
 
 test:
 	${MAKE} utest
